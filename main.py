@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
+import pandas as pd
 from selenium import webdriver
 from selenium.common import TimeoutException
 from selenium.webdriver.common.by import By
@@ -13,8 +14,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 def init_driver():
     # ヘッドレスモードは不可
     options = webdriver.ChromeOptions()
-    loginDataPath = r'C:\Users\boost\Documents\SourceTreePrivate\selenium-login\User Data'
-    options.add_argument('--user-data-dir=' + loginDataPath)
+    login_data_path = r'C:\Users\boost\Documents\SourceTreePrivate\selenium-login\User Data'
+    options.add_argument('--user-data-dir=' + login_data_path)
     return webdriver.Chrome(options=options)
 
 
@@ -25,9 +26,9 @@ class TempXPath:
     def element_temp(self, value, attribute='class', tag='div'):
         """
         [コツ]find_elementを２連結する場合は、２段階目で１つ下の階層のタグ(div//)を挟むことが必要
-        :param article_driver: 1段階目の記事タグ
         :param value: 属性値
         :param attribute: 属性名
+        :param tag タグ名
         :return:
         """
         return self.article.find_element(By.XPATH, f"div//{tag}[@{attribute}='{value}']")
@@ -68,7 +69,8 @@ class Data:
 class Bot:
     # 検索ワード
     search_word = '競馬'
-    # フォローも合わせて行うかどうか
+    search_word = '馬単'
+    # TODO フォローも合わせて行うかどうか
     follow_mode = False
 
     # いいね最大数
@@ -78,11 +80,10 @@ class Bot:
     def __init__(self):
         self.dt = None
         self.driver = init_driver()
-        # 新しいタブを作成する
+        # プロフィール表示用の新しいタブを作成する
         self.driver.execute_script("window.open()")
-        self.driver.get(
-            f"https://twitter.com/search?q={Bot.search_word}&src=typed_query&f=live")
-        self.start_scroll()
+        self.driver.get(f"https://twitter.com/search?q={Bot.search_word}&src=typed_query&f=live")
+        self.user_list = pd.read_csv('user.csv', header=None)[0].to_numpy().tolist()
 
     def driver_wait(self, target, value):
         """
@@ -139,13 +140,10 @@ class Bot:
 
     def start_scroll(self):
         for scroll_idx in range(100):
-            """ユーザid一覧
-            list(map(lambda x: xpath_temp(x, 'css-1dbjc4n r-1awozwy r-18u37iz r-1wbh5a2 r-dnmrzs').text, article_list))
-            """
+            # csvに追記するユーザ名リスト
+            add_user_list = []
             dt_now = datetime.utcnow() + timedelta(hours=9)
-            print(dt_now)
-
-            print(f'取得回数:{scroll_idx}')
+            print(f'取得回数:{scroll_idx}', f'時刻:{dt_now}')
             self.driver_wait(By.TAG_NAME, "article")
             for article_idx, article in enumerate(self.driver.find_elements(By.XPATH, "//article")):
                 try:
@@ -188,6 +186,9 @@ class Bot:
                 tweet_url = urlparse(multi_info.get_attribute("href")).path.split('/')
                 self.dt.user_id = tweet_url[1]
                 self.dt.tweet_id = tweet_url[-1]
+
+                if self.dt.user_id in self.user_list:  # いいねしたことのあるユーザを弾く
+                    continue
 
                 if self.profile_check(dt_now):
                     continue
@@ -234,6 +235,7 @@ class Bot:
                     self.dt.interval_from_action = int(
                         (dt_now - datetime.strptime(interval_from_action, '%Y年%m月%d日')).total_seconds())
 
+                # いいねクリック操作
                 self.driver_wait(By.XPATH, "//div[@data-testid='like']")
                 temp.element_temp('like', 'data-testid').click()
                 Bot.clicked_nice_sum = Bot.clicked_nice_sum + 1
@@ -241,6 +243,11 @@ class Bot:
                 if temp.elements_temp('like', 'data-testid'):
                     print("API制限中")
                     raise Exception
+
+                # ユーザ名リスト追加
+                self.user_list.append(self.dt.user_id)
+                add_user_list.append(self.dt.user_id)
+            pd.Series(add_user_list).to_csv('user.csv', mode="a", header=False, index=False)
             time.sleep(random.uniform(1, 3))
             print(f"いいね回数：{Bot.clicked_nice_sum}")
             if Bot.clicked_nice_sum > Bot.nice_max:
@@ -250,3 +257,4 @@ class Bot:
 
 if __name__ == '__main__':
     bot = Bot()
+    bot.start_scroll()
