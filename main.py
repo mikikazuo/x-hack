@@ -15,6 +15,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 def init_driver():
     # ヘッドレスモードは不可
     options = webdriver.ChromeOptions()
+    # 絶対パス指定
     login_data_path = r'C:\Users\boost\Documents\SourceTreePrivate\selenium-login\User Data'
     options.add_argument('--user-data-dir=' + login_data_path)
     return webdriver.Chrome(options=options)
@@ -68,7 +69,6 @@ class Data:
         self.interval_from_action: int | None = None
         # TODO csvへの登録と参照、一定回数越えでアクション対象外にする戦略
         self.action_sum: int = 1
-
         # TODO 明示・暗黙的な更新
         self.is_follow = False
         self.is_follower = False
@@ -91,7 +91,7 @@ class Bot:
     csv_name = 'user.csv'
 
     def __init__(self):
-        self.dt = None
+        self.dt: Data | None = None
         self.driver = init_driver()
         # プロフィール表示用の新しいタブを作成する
         self.driver.execute_script("window.open()")
@@ -116,7 +116,6 @@ class Bot:
 
     def profile_check(self, dt_now):
         """
-        TODO フォロワー比率に応じて弾く戦略
         フォロー＆フォロワー数の確認、フォロー操作
         :param dt_now: 現時刻
         :return: エラー時にTrue
@@ -131,6 +130,7 @@ class Bot:
 
         if self.driver.find_elements(By.XPATH, "//div[@data-testid='userFollowIndicator']"):
             print('フォロワーのためスキップ')
+            self.dt.is_follower = True
             self.save_csv()
             return True
 
@@ -165,7 +165,6 @@ class Bot:
             '%Y年%m月からTwitterを利用しています')
         # 月数差分
         self.dt.interval_from_user_join = (dt_now.year - user_join.year) * 12 + dt_now.month - user_join.month
-
         return False
 
     def start_scroll(self):
@@ -215,7 +214,7 @@ class Bot:
                 self.dt.user_id = tweet_url[1]
                 self.dt.tweet_id = tweet_url[-1]
 
-                print(f"===== ユーザid:{self.dt.user_id} =====")
+                print(f"ユーザid:{self.dt.user_id}")
                 if self.dt.user_id in self.user_list:  # いいねしたことのあるユーザを弾く
                     continue
 
