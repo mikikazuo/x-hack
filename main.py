@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 from selenium import webdriver
 from selenium.common import TimeoutException
 from selenium.webdriver.common.by import By
@@ -38,6 +39,10 @@ class TempXPath:
 
 
 class Data:
+    """
+    有用そうなスクレイピング情報
+    """
+
     def __init__(self):
         self.search_word: str | None = None
         self.user_name: str | None = None
@@ -56,12 +61,15 @@ class Data:
         self.img_sum: int | None = None
         self.is_twitter_card = False
         self.is_quote = False
-        self.reply_sum: int | None = None
-        self.retweet_sum: int | None = None
-        self.nice_sum: int | None = None
-        self.impression_sum: int | None = None
+        self.reply_sum: int = 0
+        self.retweet_sum: int = 0
+        self.nice_sum: int = 0
+        self.impression_sum: int = 0
         self.interval_from_action: int | None = None
-        self.action_sum: int | None = None
+        # TODO csvへの登録と参照、一定回数越えでアクション対象外にする戦略
+        self.action_sum: int = 1
+
+        # TODO 明示・暗黙的な更新
         self.is_follow = False
         self.is_follower = False
 
@@ -69,13 +77,18 @@ class Data:
 class Bot:
     # 検索ワード
     search_word = '競馬'
-    search_word = '馬単'
-    # TODO フォローも合わせて行うかどうか
+    # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
     follow_mode = False
+
+    # 許容フォロワー最大比率
+    user_follower_ratio = 3
 
     # いいね最大数
     nice_max = 50
     clicked_nice_sum = 0
+
+    # csvファイル名
+    csv_name = 'user.csv'
 
     def __init__(self):
         self.dt = None
@@ -83,7 +96,10 @@ class Bot:
         # プロフィール表示用の新しいタブを作成する
         self.driver.execute_script("window.open()")
         self.driver.get(f"https://twitter.com/search?q={Bot.search_word}&src=typed_query&f=live")
-        self.user_list = pd.read_csv('user.csv', header=None)[0].to_numpy().tolist()
+        try:
+            self.user_list = pd.read_csv(Bot.csv_name, header=None)[0].to_numpy().tolist()
+        except EmptyDataError:
+            self.user_list = []
 
     def driver_wait(self, target, value):
         """
@@ -91,35 +107,32 @@ class Bot:
         """
         WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((target, value)))
 
+    def save_csv(self):
+        """
+        ユーザ名リスト追加 & csv保存
+        """
+        self.user_list.append(self.dt.user_id)
+        pd.Series([self.dt.user_id]).to_csv('user.csv', mode="a", header=False, index=False)
+
     def profile_check(self, dt_now):
         """
         TODO フォロワー比率に応じて弾く戦略
         フォロー＆フォロワー数の確認、フォロー操作
-        :param dt_now:
+        :param dt_now: 現時刻
         :return: エラー時にTrue
         """
-        # 新しいタブに切り替える
-        self.driver.switch_to.window(self.driver.window_handles[1])
         # 新しいタブでURLアクセス
         self.driver.get(f'https://twitter.com/{self.dt.user_id}')
         try:
             self.driver_wait(By.XPATH, "//span[@data-testid='UserJoinDate']")
         except TimeoutException:  # 再読み込みボタンが表示されている状態
-            print('読み込みできないためスキップ')
+            print('プロフィールが読み込めないためスキップ')
             return True
-        # プロフィール記載がない場合は要素が見つからない
-        user_profile = self.driver.find_elements(By.XPATH, "//div[@data-testid='UserDescription']")
-        if user_profile:
-            self.dt.user_profile = user_profile[0].text
-            self.dt.user_profile_length = len(self.dt.user_profile.replace('\n', ''))
-        else:
-            self.dt.user_profile = ''  # スキーマではrequiredになっているためNone不可
-            self.dt.user_profile_length = 0
-        user_join = datetime.strptime(
-            self.driver.find_element(By.XPATH, f"//span[@data-testid='UserJoinDate']").text,
-            '%Y年%m月からTwitterを利用しています')
-        # 月数差分
-        self.dt.interval_from_user_join = (dt_now.year - user_join.year) * 12 + dt_now.month - user_join.month
+
+        if self.driver.find_elements(By.XPATH, "//div[@data-testid='userFollowIndicator']"):
+            print('フォロワーのためスキップ')
+            self.save_csv()
+            return True
 
         def change_unit(text):
             """　単位の統一　"""
@@ -134,16 +147,31 @@ class Bot:
         self.dt.user_follow_num = change_unit(follow_follower_num[0].text)
         self.dt.user_follower_num = change_unit(follow_follower_num[1].text)
 
-        # 前のタブに切り替え
-        self.driver.switch_to.window(self.driver.window_handles[0])
+        if self.dt.user_follow_num == 0 or self.dt.user_follower_num / self.dt.user_follow_num > Bot.user_follower_ratio:
+            print('フォロワー比率が高いためスキップ')
+            self.save_csv()
+            return True
+
+        # プロフィール記載がない場合は要素が見つからない
+        user_profile = self.driver.find_elements(By.XPATH, "//div[@data-testid='UserDescription']")
+        if user_profile:
+            self.dt.user_profile = user_profile[0].text
+            self.dt.user_profile_length = len(self.dt.user_profile.replace('\n', ''))
+        else:
+            self.dt.user_profile = ''
+            self.dt.user_profile_length = 0
+        user_join = datetime.strptime(
+            self.driver.find_element(By.XPATH, f"//span[@data-testid='UserJoinDate']").text,
+            '%Y年%m月からTwitterを利用しています')
+        # 月数差分
+        self.dt.interval_from_user_join = (dt_now.year - user_join.year) * 12 + dt_now.month - user_join.month
+
         return False
 
     def start_scroll(self):
         for scroll_idx in range(100):
-            # csvに追記するユーザ名リスト
-            add_user_list = []
             dt_now = datetime.utcnow() + timedelta(hours=9)
-            print(f'取得回数:{scroll_idx}', f'時刻:{dt_now}')
+            print(f'取得回数:{scroll_idx}', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
             self.driver_wait(By.TAG_NAME, "article")
             for article_idx, article in enumerate(self.driver.find_elements(By.XPATH, "//article")):
                 try:
@@ -187,11 +215,17 @@ class Bot:
                 self.dt.user_id = tweet_url[1]
                 self.dt.tweet_id = tweet_url[-1]
 
+                print(f"===== ユーザid:{self.dt.user_id} =====")
                 if self.dt.user_id in self.user_list:  # いいねしたことのあるユーザを弾く
                     continue
 
+                # 新しいタブに切り替える
+                self.driver.switch_to.window(self.driver.window_handles[1])
                 if self.profile_check(dt_now):
+                    # 前のタブに切り替え
+                    self.driver.switch_to.window(self.driver.window_handles[0])
                     continue
+                self.driver.switch_to.window(self.driver.window_handles[0])
 
                 # 引用のマークも含まれてしまっていたのでnot containsで弾いた
                 # 最後のsvgタグで取得できなかったため、rect関数で領域をチェック方式にした
@@ -221,15 +255,15 @@ class Bot:
 
                 # ツイート時間といいねした時間の秒差分取得
                 interval_from_action = multi_info.get_attribute("aria-label")
-                change_unit_flag = False
+                is_below_hour = False
                 # 差分が時間単位以下の場合
                 for word, unit in {'秒': 1, '分': 60, '時間': 3600}.items():
                     if word in interval_from_action:
                         self.dt.interval_from_action = int(interval_from_action.split()[0]) * unit
-                        change_unit_flag = True
+                        is_below_hour = True
                         break
                 # 差分が日数単位の場合
-                if not change_unit_flag:
+                if not is_below_hour:
                     if '年' not in interval_from_action:
                         interval_from_action = f'{dt_now.year}年{interval_from_action}'
                     self.dt.interval_from_action = int(
@@ -244,12 +278,9 @@ class Bot:
                     print("API制限中")
                     raise Exception
 
-                # ユーザ名リスト追加
-                self.user_list.append(self.dt.user_id)
-                add_user_list.append(self.dt.user_id)
-            pd.Series(add_user_list).to_csv('user.csv', mode="a", header=False, index=False)
+                self.save_csv()
             time.sleep(random.uniform(1, 3))
-            print(f"いいね回数：{Bot.clicked_nice_sum}")
+            print(f"いいね総数：{Bot.clicked_nice_sum}")
             if Bot.clicked_nice_sum > Bot.nice_max:
                 print('いいね数オーバー')
                 break
