@@ -6,17 +6,17 @@ from urllib.parse import urlparse
 import pandas as pd
 from pandas.errors import EmptyDataError
 from selenium import webdriver
-from selenium.common import TimeoutException
+from selenium.common import TimeoutException, ElementClickInterceptedException, StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 
 def init_driver():
-    # ヘッドレスモードは不可
+    # ツイートが動的読込のためヘッドレスモードは不可
     options = webdriver.ChromeOptions()
     # 絶対パス指定
-    login_data_path = r'C:\Users\boost\Documents\SourceTreePrivate\selenium-login\User Data'
+    login_data_path = r'C:\Users\boost\Documents\SourceTreePrivate\selenium-login\x-hack'
     options.add_argument('--user-data-dir=' + login_data_path)
     return webdriver.Chrome(options=options)
 
@@ -45,7 +45,7 @@ class Data:
     """
 
     def __init__(self):
-        self.search_word: str | None = None
+        self.search_word = Bot.search_word
         self.user_name: str | None = None
         self.user_id: str | None = None
         self.tweet_id: str | None = None
@@ -195,7 +195,6 @@ class Bot:
                 multi_info = multi_info[0]
 
                 self.dt = Data()
-                self.dt.search_word = Bot.search_word
 
                 text_elements = temp.elements_temp(
                     'css-901oao r-1nao33i r-37j5jr r-a023e6 r-16dba41 r-rjixqe r-bcqeeo r-bnwqim r-qvutc0')
@@ -215,7 +214,12 @@ class Bot:
                 self.dt.tweet_id = tweet_url[-1]
 
                 print(f"ユーザid:{self.dt.user_id}")
+                if temp.elements_temp('css-1dbjc4n r-o52ifk'):  # 新しいツイートを読み込めていない
+                    print("API制限中")
+                    raise Exception
+
                 if self.dt.user_id in self.user_list:  # いいねしたことのあるユーザを弾く
+                    print("いいね済みユーザのためスキップ")
                     continue
 
                 # 新しいタブに切り替える
@@ -229,9 +233,13 @@ class Bot:
                 # 引用のマークも含まれてしまっていたのでnot containsで弾いた
                 # 最後のsvgタグで取得できなかったため、rect関数で領域をチェック方式にした
                 quote_class_value = 'css-1dbjc4n r-1kqtdi0 r-1867qdf r-rs99b7 r-1loqt21 r-adacv r-1ny4l3l r-1udh08x r-o7ynqc r-6416eg'
-                self.dt.is_blue_user = temp.article.find_element(By.XPATH,
-                                                                 f"div//a[not(contains(@class,'{quote_class_value}'))]//div[@class='css-901oao r-1nao33i r-xoduu5 r-18u37iz r-1q142lx r-1tl8opc r-a023e6 r-16dba41 r-rjixqe r-bcqeeo r-qvutc0']/span").rect[
-                                           'height'] != 0
+                try:
+                    self.dt.is_blue_user = temp.article.find_element(By.XPATH,
+                                                                     f"div//a[not(contains(@class,'{quote_class_value}'))]//div[@class='css-901oao r-1nao33i r-xoduu5 r-18u37iz r-1q142lx r-1tl8opc r-a023e6 r-16dba41 r-rjixqe r-bcqeeo r-qvutc0']/span").rect[
+                                               'height'] != 0
+                except StaleElementReferenceException:
+                    print("原因不明のたまに起きるエラーが発生")
+                    continue
 
                 self.dt.is_reply = '返信先' in temp.element_temp(
                     'css-1dbjc4n r-1iusvr4 r-16y2uox r-1777fci r-kzbkwu').text
@@ -270,7 +278,11 @@ class Bot:
 
                 # いいねクリック操作
                 self.driver_wait(By.XPATH, "//div[@data-testid='like']")
-                temp.element_temp('like', 'data-testid').click()
+                try:
+                    temp.element_temp('like', 'data-testid').click()
+                except ElementClickInterceptedException:
+                    print("プロフィールダイアログが表示されていいねできないためスキップ")
+                    continue
                 Bot.clicked_nice_sum = Bot.clicked_nice_sum + 1
                 time.sleep(random.uniform(1, 2))
                 if temp.elements_temp('like', 'data-testid'):
@@ -281,7 +293,7 @@ class Bot:
             time.sleep(random.uniform(1, 3))
             print(f"いいね総数：{Bot.clicked_nice_sum}")
             if Bot.clicked_nice_sum > Bot.nice_max:
-                print('いいね数オーバー')
+                print('いいね数オーバー', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                 break
 
 
