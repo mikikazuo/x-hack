@@ -45,7 +45,8 @@ class Data:
     """
 
     def __init__(self):
-        self.search_word = Bot.search_word
+        # TODO 検索ワード
+        # self.search_word = Bot.search_words
         self.user_name: str | None = None
         self.user_id: str | None = None
         self.tweet_id: str | None = None
@@ -76,7 +77,8 @@ class Data:
 
 class Bot:
     # 検索ワード
-    search_word = '競馬'
+    search_words = ['競馬', '馬券', '単勝', '競馬', '複勝', '馬連', '競馬', '馬単', '3連単', '競馬', '3連複', '三連単',
+                    '競馬', '三連複', '穴馬']
     # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
     follow_mode = False
 
@@ -84,8 +86,12 @@ class Bot:
     user_follower_ratio = 3
 
     # いいね最大数
-    nice_max = 50
+    nice_max = 40
+    # 累計のいいね回数
     clicked_nice_sum = 0
+    # １単語ごとのいいね回数
+    clicked_nice_sum_word = 0
+    "upload1_1.jpg"
 
     # csvファイル名
     csv_name = 'user.csv'
@@ -95,7 +101,6 @@ class Bot:
         self.driver = init_driver()
         # プロフィール表示用の新しいタブを作成する
         self.driver.execute_script("window.open()")
-        self.driver.get(f"https://twitter.com/search?q={Bot.search_word}&src=typed_query&f=live")
         try:
             self.user_list = pd.read_csv(Bot.csv_name, header=None)[0].to_numpy().tolist()
         except EmptyDataError:
@@ -148,7 +153,7 @@ class Bot:
         self.dt.user_follower_num = change_unit(follow_follower_num[1].text)
 
         if self.dt.user_follow_num == 0 or self.dt.user_follower_num / self.dt.user_follow_num > Bot.user_follower_ratio:
-            print('フォロワー比率が高いためスキップ')
+            # print('フォロワー比率が高いためスキップ')
             self.save_csv()
             return True
 
@@ -168,11 +173,19 @@ class Bot:
         return False
 
     def start_scroll(self):
+        skip_cnt = -1
+        skip_flag = True
         for scroll_idx in range(100):
             dt_now = datetime.utcnow() + timedelta(hours=9)
-            print(f'取得回数:{scroll_idx}', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+            print(f'取得回数:{scroll_idx}')
             self.driver_wait(By.TAG_NAME, "article")
             for article_idx, article in enumerate(self.driver.find_elements(By.XPATH, "//article")):
+                skip_cnt = skip_cnt + 1 if skip_flag else 0
+                skip_flag = True
+                if skip_cnt > 20:
+                    print("連続スキップ上限オーバー")
+                    raise Exception
+
                 try:
                     self.driver.execute_script('arguments[0].scrollIntoView({behavior: "smooth", block: "center"});',
                                                article)
@@ -180,6 +193,7 @@ class Bot:
                     print("スクロール範囲外")
                     continue
                 temp = TempXPath(article)
+
                 # 下部のリアクション数情報、いいね済かどうかの情報も入っている
                 bottom_info_list = temp.element_temp(
                     'css-1dbjc4n r-1kbdv8c r-18u37iz r-1wtj0ep r-1s2bzr4 r-hzcoqn').get_attribute("aria-label").split(
@@ -202,7 +216,8 @@ class Bot:
                     continue
                 # 本文
                 self.dt.text = text_elements[0].text
-                if Bot.search_word not in self.dt.text:  # ユーザ名だけに引っかかるパターンは弾く
+                if search_word not in self.dt.text:  # ユーザ名だけに引っかかるパターンは弾く
+                    print('ユーザ名のみに引っかかったためスキップ')
                     continue
                 self.dt.text_length = len(self.dt.text.replace('\n', ''))
                 # 本文中のハッシュタグの個数
@@ -213,13 +228,13 @@ class Bot:
                 self.dt.user_id = tweet_url[1]
                 self.dt.tweet_id = tweet_url[-1]
 
-                print(f"ユーザid:{self.dt.user_id}")
+                # print(f"ユーザid:{self.dt.user_id}")
                 if temp.elements_temp('css-1dbjc4n r-o52ifk'):  # 新しいツイートを読み込めていない
-                    print("API制限中")
+                    print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                     raise Exception
 
                 if self.dt.user_id in self.user_list:  # いいねしたことのあるユーザを弾く
-                    print("いいね済みユーザのためスキップ")
+                    # print("いいね済みユーザのためスキップ")
                     continue
 
                 # 新しいタブに切り替える
@@ -283,20 +298,28 @@ class Bot:
                 except ElementClickInterceptedException:
                     print("プロフィールダイアログが表示されていいねできないためスキップ")
                     continue
+                Bot.clicked_nice_sum_word = Bot.clicked_nice_sum_word + 1
                 Bot.clicked_nice_sum = Bot.clicked_nice_sum + 1
-                time.sleep(random.uniform(1, 2))
+                time.sleep(random.uniform(2, 5))
                 if temp.elements_temp('like', 'data-testid'):
-                    print("API制限中")
+                    print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                     raise Exception
 
                 self.save_csv()
+                skip_flag = False
+
             time.sleep(random.uniform(1, 3))
             print(f"いいね総数：{Bot.clicked_nice_sum}")
-            if Bot.clicked_nice_sum > Bot.nice_max:
+            if Bot.clicked_nice_sum_word > Bot.nice_max:
                 print('いいね数オーバー', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                Bot.clicked_nice_sum_word = 0
                 break
 
 
 if __name__ == '__main__':
     bot = Bot()
-    bot.start_scroll()
+    for search_word in Bot.search_words:
+        print(f"検索ワード：{search_word}")
+        bot.driver.get(f"https://twitter.com/search?q={search_word}&src=typed_query&f=live")
+        bot.start_scroll()
+        time.sleep(60 * 15)
