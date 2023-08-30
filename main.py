@@ -184,7 +184,7 @@ class Bot:
                 skip_flag = True
                 if skip_cnt > 20:
                     print("連続スキップ上限オーバー")
-                    raise Exception
+                    return False
 
                 try:
                     self.driver.execute_script('arguments[0].scrollIntoView({behavior: "smooth", block: "center"});',
@@ -313,7 +313,7 @@ class Bot:
             if Bot.clicked_nice_sum_word > Bot.nice_max:
                 print('いいね数オーバー', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                 Bot.clicked_nice_sum_word = 0
-                break
+                return True
 
 
 if __name__ == '__main__':
@@ -321,5 +321,5 @@ if __name__ == '__main__':
     for search_word in Bot.search_words:
         print(f"検索ワード：{search_word}")
         bot.driver.get(f"https://twitter.com/search?q={search_word}&src=typed_query&f=live")
-        bot.start_scroll()
-        time.sleep(60 * 15)
+        if bot.start_scroll():  # 連続スキップ(False)の場合、次の検索ワードに即移行する
+            time.sleep(60 * 15)
