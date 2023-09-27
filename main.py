@@ -35,8 +35,14 @@ class TempXPath:
         """
         return self.article.find_element(By.XPATH, f"div//{tag}[@{attribute}='{value}']")
 
+    def element_contain_temp(self, value, attribute='class', tag='div'):
+        return self.article.find_element(By.XPATH, f"div//{tag}[contains(@{attribute},'{value}')]")
+
     def elements_temp(self, value, attribute='class', tag='div'):
         return self.article.find_elements(By.XPATH, f"div//{tag}[@{attribute}='{value}']")
+
+    def elements_contain_temp(self, value, attribute='class', tag='div'):
+        return self.article.find_elements(By.XPATH, f"div//{tag}[contains(@{attribute},'{value}')]")
 
 
 class Data:
@@ -77,8 +83,10 @@ class Data:
 
 class Bot:
     # 検索ワード
-    search_words = ['競馬', '馬券', '単勝', '競馬', '複勝', '馬連', '競馬', '馬単', '3連単', '競馬', '3連複', '三連単',
-                    '競馬', '三連複', '穴馬']
+    search_words = ['競馬', 'イクイノックス', 'ユーバーレーベン', 'ウォーターナビレラ', '競馬', '馬券', '単勝', '競馬',
+                    '複勝', '馬連', '競馬', '馬単', '3連単', '競馬', '3連複', '三連単',
+                    '競馬', '三連複', '穴馬', ]
+
     # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
     follow_mode = False
 
@@ -100,7 +108,7 @@ class Bot:
         self.dt: Data | None = None
         self.driver = init_driver()
         # プロフィール表示用の新しいタブを作成する
-        self.driver.execute_script("window.open()")
+        # self.driver.execute_script("window.open()")
         try:
             self.user_list = pd.read_csv(Bot.csv_name, header=None)[0].to_numpy().tolist()
         except EmptyDataError:
@@ -179,13 +187,13 @@ class Bot:
             dt_now = datetime.utcnow() + timedelta(hours=9)
             print(f'取得回数:{scroll_idx}')
             self.driver_wait(By.TAG_NAME, "article")
+            skip_cnt = skip_cnt + 1 if skip_flag else 0
+            print(skip_cnt)
+            if skip_cnt > 3:
+                print("連続スキップ上限オーバー")
+                return False
+            skip_flag = True
             for article_idx, article in enumerate(self.driver.find_elements(By.XPATH, "//article")):
-                skip_cnt = skip_cnt + 1 if skip_flag else 0
-                skip_flag = True
-                if skip_cnt > 20:
-                    print("連続スキップ上限オーバー")
-                    return False
-
                 try:
                     self.driver.execute_script('arguments[0].scrollIntoView({behavior: "smooth", block: "center"});',
                                                article)
@@ -194,10 +202,13 @@ class Bot:
                     continue
                 temp = TempXPath(article)
 
-                # 下部のリアクション数情報、いいね済かどうかの情報も入っている
-                bottom_info_list = temp.element_temp(
-                    'css-1dbjc4n r-1kbdv8c r-18u37iz r-1wtj0ep r-1s2bzr4 r-hzcoqn').get_attribute("aria-label").split(
-                    '、')
+                try:
+                    # 下部のリアクション数情報、いいね済かどうかの情報も入っている
+                    bottom_info_list = temp.element_contain_temp(
+                        'css-1dbjc4n r-1kbdv8c r-18u37iz r-1wtj0ep r-1s2bzr4').get_attribute("aria-label").split('、')
+                except:
+                    print("謎エラースキップ")
+                    continue
                 if 'いいね済み' in bottom_info_list:
                     continue
                 # 広告を弾くのに利用(広告は投稿時間の記載がない) ＆ その他、ツイートid・ツイート時間情報が入っている
@@ -217,7 +228,7 @@ class Bot:
                 # 本文
                 self.dt.text = text_elements[0].text
                 if search_word not in self.dt.text:  # ユーザ名だけに引っかかるパターンは弾く
-                    print('ユーザ名のみに引っかかったためスキップ')
+                    # print('ユーザ名のみに引っかかったためスキップ')
                     continue
                 self.dt.text_length = len(self.dt.text.replace('\n', ''))
                 # 本文中のハッシュタグの個数
@@ -237,13 +248,13 @@ class Bot:
                     # print("いいね済みユーザのためスキップ")
                     continue
 
-                # 新しいタブに切り替える
-                self.driver.switch_to.window(self.driver.window_handles[1])
-                if self.profile_check(dt_now):
-                    # 前のタブに切り替え
-                    self.driver.switch_to.window(self.driver.window_handles[0])
-                    continue
-                self.driver.switch_to.window(self.driver.window_handles[0])
+                # 新しいタブに切り替える　アクセス制限数節約のためコメントアウト
+                # self.driver.switch_to.window(self.driver.window_handles[1])
+                # if self.profile_check(dt_now):
+                #     # 前のタブに切り替え
+                #     self.driver.switch_to.window(self.driver.window_handles[0])
+                #     continue
+                # self.driver.switch_to.window(self.driver.window_handles[0])
 
                 # 引用のマークも含まれてしまっていたのでnot containsで弾いた
                 # 最後のsvgタグで取得できなかったため、rect関数で領域をチェック方式にした
@@ -258,6 +269,9 @@ class Bot:
 
                 self.dt.is_reply = '返信先' in temp.element_temp(
                     'css-1dbjc4n r-1iusvr4 r-16y2uox r-1777fci r-kzbkwu').text
+                if self.dt.is_reply:  # 返信ツイートを弾く
+                    # print("返信ツイートのためスキップ")
+                    continue
 
                 self.dt.img_sum = len(temp.elements_temp('画像', 'aria-label'))
                 self.dt.is_twitter_card = len(
@@ -300,7 +314,7 @@ class Bot:
                     continue
                 Bot.clicked_nice_sum_word = Bot.clicked_nice_sum_word + 1
                 Bot.clicked_nice_sum = Bot.clicked_nice_sum + 1
-                time.sleep(random.uniform(2, 5))
+                time.sleep(random.uniform(3, 6))
                 if temp.elements_temp('like', 'data-testid'):
                     print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                     raise Exception
