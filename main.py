@@ -188,7 +188,6 @@ class Bot:
             print(f'取得回数:{scroll_idx}')
             self.driver_wait(By.TAG_NAME, "article")
             skip_cnt = skip_cnt + 1 if skip_flag else 0
-            print(skip_cnt)
             if skip_cnt > 3:
                 print("連続スキップ上限オーバー")
                 return False
@@ -292,12 +291,16 @@ class Bot:
                 # ツイート時間といいねした時間の秒差分取得
                 interval_from_action = multi_info.get_attribute("aria-label")
                 is_below_hour = False
-                # 差分が時間単位以下の場合
-                for word, unit in {'秒': 1, '分': 60, '時間': 3600}.items():
-                    if word in interval_from_action:
-                        self.dt.interval_from_action = int(interval_from_action.split()[0]) * unit
-                        is_below_hour = True
-                        break
+                if '現在' in interval_from_action:
+                    self.dt.interval_from_action = 0
+                    is_below_hour = True
+                else:
+                    # 差分が時間単位以下の場合
+                    for word, unit in {'秒': 1, '分': 60, '時間': 3600}.items():
+                        if word in interval_from_action:
+                            self.dt.interval_from_action = int(interval_from_action.split()[0]) * unit
+                            is_below_hour = True
+                            break
                 # 差分が日数単位の場合
                 if not is_below_hour:
                     if '年' not in interval_from_action:
