@@ -11,12 +11,15 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+#https://twitter.com/account/access　のURLに飛ばされた　BOTチェックで
+#取得回数:64 検索ワード：競馬　アウト   取得回数:50
 
+#取得回数 30ぐらいならセーフか？
 def init_driver():
     # ツイートが動的読込のためヘッドレスモードは不可
     options = webdriver.ChromeOptions()
     # 絶対パス指定
-    login_data_path = r'C:\Users\boost\Documents\SourceTreePrivate\selenium-login\x-hack'
+    login_data_path = r'C:\Users\81809\PycharmProjects\selenium-login\x-hack'
     options.add_argument('--user-data-dir=' + login_data_path)
     return webdriver.Chrome(options=options)
 
@@ -83,10 +86,11 @@ class Data:
 
 class Bot:
     # 検索ワード
-    search_words = ['競馬', 'イクイノックス', 'ユーバーレーベン', 'ウォーターナビレラ', '競馬', '馬券', '単勝', '競馬',
-                    '複勝', '馬連', '競馬', '馬単', '3連単', '競馬', '3連複', '三連単',
-                    '競馬', '三連複', '穴馬', ]
-
+    search_words = ['競馬','騎手','イクイノックス','リバティアイランド','競馬', '馬券',
+                    '単勝','競馬', '複勝', '馬連', '競馬',
+                    '騎手', '馬単', '3連単', '競馬', '3連複', '三連単', '競馬',
+                    '三連複', '穴馬', ]
+    #search_words = ['ウマ娘','ナイスネイチャ','キタサンブラック','ドウデュース','ジャスティンパレス','プログノーシス','ダノンベルーガ','ログノーシス','ジャックドール']
     # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
     follow_mode = False
 
@@ -102,7 +106,7 @@ class Bot:
     "upload1_1.jpg"
 
     # csvファイル名
-    csv_name = 'user.csv'
+    csv_name = 'user_2.csv'
 
     def __init__(self):
         self.dt: Data | None = None
@@ -125,7 +129,7 @@ class Bot:
         ユーザ名リスト追加 & csv保存
         """
         self.user_list.append(self.dt.user_id)
-        pd.Series([self.dt.user_id]).to_csv('user.csv', mode="a", header=False, index=False)
+        pd.Series([self.dt.user_id]).to_csv(Bot.csv_name, mode="a", header=False, index=False)
 
     def profile_check(self, dt_now):
         """
@@ -185,10 +189,14 @@ class Bot:
         skip_flag = True
         for scroll_idx in range(100):
             dt_now = datetime.utcnow() + timedelta(hours=9)
+            # if temp.elements_contain_temp('css-18t94o4 css-1dbjc4n r-l5o3uw r-42olwf r-sdzlij r-1phboty r-rs99b7 r-2yi16'):  # 新しいツイートを読み込めていない
+            #     print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+            #     raise Exception
             print(f'取得回数:{scroll_idx}')
+            # この時点でBOT検証ページに飛ばされてタイムオーバーエラー
             self.driver_wait(By.TAG_NAME, "article")
             skip_cnt = skip_cnt + 1 if skip_flag else 0
-            if skip_cnt > 3:
+            if skip_cnt > 5:
                 print("連続スキップ上限オーバー")
                 return False
             skip_flag = True
@@ -201,31 +209,48 @@ class Bot:
                     continue
                 temp = TempXPath(article)
 
+                if temp.elements_contain_temp(
+                        'css-18t94o4 css-1dbjc4n r-l5o3uw r-42olwf r-sdzlij r-1phboty r-rs99b7 r-2yi16'):  # 新しいツイートを読み込めていない test
+                    print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                    raise Exception
                 try:
                     # 下部のリアクション数情報、いいね済かどうかの情報も入っている
                     bottom_info_list = temp.element_contain_temp(
-                        'css-1dbjc4n r-1kbdv8c r-18u37iz r-1wtj0ep r-1s2bzr4').get_attribute("aria-label").split('、')
+                        'css-175oi2r r-1kbdv8c r-18u37iz r-1wtj0ep r-1ye8kvj r-1s2bzr4').get_attribute("aria-label").split('、')
                 except:
-                    print("謎エラースキップ")
+                    print("謎エラースキップ(bottom_info_list)")
                     continue
                 if 'いいね済み' in bottom_info_list:
+                    # print("いいね済みスキップ")
                     continue
-                # 広告を弾くのに利用(広告は投稿時間の記載がない) ＆ その他、ツイートid・ツイート時間情報が入っている
-                multi_info = temp.elements_temp(
-                    'css-4rbku5 css-18t94o4 css-901oao r-1bwzh9t r-1loqt21 r-xoduu5 r-1q142lx r-1w6e6rj r-1tl8opc r-a023e6 r-16dba41 r-9aw3ui r-rjixqe r-bcqeeo r-3s2u2q r-qvutc0',
-                    'class', 'a')
+                try:
+                    # 広告を弾くのに利用(広告は投稿時間の記載がない) ＆ その他、ツイートid・ツイート時間情報が入っている
+                    multi_info = temp.elements_temp(
+                        'css-1rynq56 r-bcqeeo r-qvutc0 r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21',
+                        'class', 'a')
+                except StaleElementReferenceException:
+                    print("謎エラースキップ(multi_info)")
+                    continue
                 if not multi_info:
                     continue
                 multi_info = multi_info[0]
 
                 self.dt = Data()
 
-                text_elements = temp.elements_temp(
-                    'css-901oao r-1nao33i r-37j5jr r-a023e6 r-16dba41 r-rjixqe r-bcqeeo r-bnwqim r-qvutc0')
+                try:
+                    text_elements = temp.elements_temp('tweetText', 'data-testid')
+                except StaleElementReferenceException:
+                    print("謎エラースキップ(text_elements)")
+                    continue
                 if not text_elements:  # 本文がなく画像だけのパターンもあるため弾く
+                    print("本文がなくスキップ")
                     continue
                 # 本文
-                self.dt.text = text_elements[0].text
+                try:
+                    self.dt.text = text_elements[0].text
+                except StaleElementReferenceException:
+                    print("謎エラースキップ(self.dt.text)")
+                    continue
                 if search_word not in self.dt.text:  # ユーザ名だけに引っかかるパターンは弾く
                     # print('ユーザ名のみに引っかかったためスキップ')
                     continue
@@ -233,16 +258,23 @@ class Bot:
                 # 本文中のハッシュタグの個数
                 self.dt.text_hashtag_num = self.dt.text.count('#')
 
-                self.dt.user_name = temp.element_temp('css-1dbjc4n r-1awozwy r-18u37iz r-1wbh5a2 r-dnmrzs').text
-                tweet_url = urlparse(multi_info.get_attribute("href")).path.split('/')
+                try:
+                    self.dt.user_name = temp.element_temp('css-1rynq56 r-dnmrzs r-1udh08x r-3s2u2q r-bcqeeo r-qvutc0 r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-18u37iz r-1wvb978').text
+                    tweet_url = urlparse(multi_info.get_attribute("href")).path.split('/')
+                except StaleElementReferenceException:
+                    print("謎エラースキップ(self.dt.user_name)")
+                    continue
                 self.dt.user_id = tweet_url[1]
                 self.dt.tweet_id = tweet_url[-1]
 
-                # print(f"ユーザid:{self.dt.user_id}")
-                if temp.elements_temp('css-1dbjc4n r-o52ifk'):  # 新しいツイートを読み込めていない
-                    print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
-                    raise Exception
-
+                try:
+                    # print(f"ユーザid:{self.dt.user_id}")
+                    if temp.elements_temp('css-1dbjc4n r-o52ifk'):  # 新しいツイートを読み込めていない
+                        print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                        raise Exception
+                except StaleElementReferenceException:
+                    print("謎エラースキップ(temp.elements_temp)")
+                    continue
                 if self.dt.user_id in self.user_list:  # いいねしたことのあるユーザを弾く
                     # print("いいね済みユーザのためスキップ")
                     continue
@@ -257,17 +289,18 @@ class Bot:
 
                 # 引用のマークも含まれてしまっていたのでnot containsで弾いた
                 # 最後のsvgタグで取得できなかったため、rect関数で領域をチェック方式にした
-                quote_class_value = 'css-1dbjc4n r-1kqtdi0 r-1867qdf r-rs99b7 r-1loqt21 r-adacv r-1ny4l3l r-1udh08x r-o7ynqc r-6416eg'
+                # 引用領域
+                quote_class_value = 'css-175oi2r r-adacv r-1udh08x r-1kqtdi0 r-1867qdf r-rs99b7 r-o7ynqc r-6416eg r-1ny4l3l r-1loqt21'
                 try:
                     self.dt.is_blue_user = temp.article.find_element(By.XPATH,
-                                                                     f"div//a[not(contains(@class,'{quote_class_value}'))]//div[@class='css-901oao r-1nao33i r-xoduu5 r-18u37iz r-1q142lx r-1tl8opc r-a023e6 r-16dba41 r-rjixqe r-bcqeeo r-qvutc0']/span").rect[
+                                                                     f"div//a[not(contains(@class,'{quote_class_value}'))]//div[@class='css-1rynq56 r-bcqeeo r-qvutc0 r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-18u37iz r-1q142lx']/span").rect[
                                                'height'] != 0
                 except StaleElementReferenceException:
                     print("原因不明のたまに起きるエラーが発生")
                     continue
 
                 self.dt.is_reply = '返信先' in temp.element_temp(
-                    'css-1dbjc4n r-1iusvr4 r-16y2uox r-1777fci r-kzbkwu').text
+                    'css-175oi2r r-1iusvr4 r-16y2uox r-1777fci r-kzbkwu').text
                 if self.dt.is_reply:  # 返信ツイートを弾く
                     # print("返信ツイートのためスキップ")
                     continue
@@ -318,6 +351,8 @@ class Bot:
                 Bot.clicked_nice_sum_word = Bot.clicked_nice_sum_word + 1
                 Bot.clicked_nice_sum = Bot.clicked_nice_sum + 1
                 time.sleep(random.uniform(3, 6))
+                # 削除された場合のクラス名　'css-901oao css-16my406 r-1tl8opc r-bcqeeo r-qvutc0'
+                # TODO ここでBOTチェックが入った　エラー　selenium.common.exceptions.StaleElementReferenceException
                 if temp.elements_temp('like', 'data-testid'):
                     print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                     raise Exception
