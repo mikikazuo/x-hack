@@ -11,10 +11,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-#https://twitter.com/account/access　のURLに飛ばされた　BOTチェックで
-#取得回数:64 検索ワード：競馬　アウト   取得回数:50
 
-#取得回数 30ぐらいならセーフか？
+# https://twitter.com/account/access　のURLに飛ばされた　BOTチェックで
+# 取得回数:64 検索ワード：競馬　アウト   取得回数:50
+
+# 取得回数 30ぐらいならセーフか？
 def init_driver():
     # ツイートが動的読込のためヘッドレスモードは不可
     options = webdriver.ChromeOptions()
@@ -85,12 +86,10 @@ class Data:
 
 
 class Bot:
+    special_words = ['有馬記念', 'ウマ娘', '競馬']
     # 検索ワード
-    search_words = ['競馬','騎手','イクイノックス','リバティアイランド','競馬', '馬券',
-                    '単勝','競馬', '複勝', '馬連', '競馬',
-                    '騎手', '馬単', '3連単', '競馬', '3連複', '三連単', '競馬',
-                    '三連複', '穴馬', ]
-    #search_words = ['ウマ娘','ナイスネイチャ','キタサンブラック','ドウデュース','ジャスティンパレス','プログノーシス','ダノンベルーガ','ログノーシス','ジャックドール']
+    search_words = [*special_words, '騎手', 'イクイノックス', 'リバティアイランド', '単勝', *special_words, '複勝',
+                    '馬連', '馬単', '3連単', *special_words, '3連複', '三連単', '三連複', '穴馬', ]
     # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
     follow_mode = False
 
@@ -103,7 +102,6 @@ class Bot:
     clicked_nice_sum = 0
     # １単語ごとのいいね回数
     clicked_nice_sum_word = 0
-    "upload1_1.jpg"
 
     # csvファイル名
     csv_name = 'user_2.csv'
@@ -187,25 +185,22 @@ class Bot:
     def start_scroll(self):
         skip_cnt = -1
         skip_flag = True
-        for scroll_idx in range(100):
+        for scroll_idx in range(50):
             dt_now = datetime.utcnow() + timedelta(hours=9)
-            # if temp.elements_contain_temp('css-18t94o4 css-1dbjc4n r-l5o3uw r-42olwf r-sdzlij r-1phboty r-rs99b7 r-2yi16'):  # 新しいツイートを読み込めていない
-            #     print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
-            #     raise Exception
             print(f'取得回数:{scroll_idx}')
             # この時点でBOT検証ページに飛ばされてタイムオーバーエラー
             self.driver_wait(By.TAG_NAME, "article")
-            skip_cnt = skip_cnt + 1 if skip_flag else 0
+            skip_cnt += 1 if skip_flag else 0
             if skip_cnt > 5:
                 print("連続スキップ上限オーバー")
                 return False
             skip_flag = True
-            for article_idx, article in enumerate(self.driver.find_elements(By.XPATH, "//article")):
+            for article in self.driver.find_elements(By.XPATH, "//article"):
                 try:
                     self.driver.execute_script('arguments[0].scrollIntoView({behavior: "smooth", block: "center"});',
                                                article)
                 except:  # 広告が大きすぎるなど
-                    print("スクロール範囲外")
+                    # print("スクロール範囲外")
                     continue
                 temp = TempXPath(article)
 
@@ -215,8 +210,7 @@ class Bot:
                     raise Exception
                 try:
                     # 下部のリアクション数情報、いいね済かどうかの情報も入っている
-                    bottom_info_list = temp.element_contain_temp(
-                        'css-175oi2r r-1kbdv8c r-18u37iz r-1wtj0ep r-1ye8kvj r-1s2bzr4').get_attribute("aria-label").split('、')
+                    bottom_info_list = temp.element_contain_temp('group', 'role').get_attribute("aria-label").split('、')
                 except:
                     print("謎エラースキップ(bottom_info_list)")
                     continue
@@ -259,7 +253,8 @@ class Bot:
                 self.dt.text_hashtag_num = self.dt.text.count('#')
 
                 try:
-                    self.dt.user_name = temp.element_temp('css-1rynq56 r-dnmrzs r-1udh08x r-3s2u2q r-bcqeeo r-qvutc0 r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-18u37iz r-1wvb978').text
+                    self.dt.user_name = temp.element_temp(
+                        'css-1rynq56 r-dnmrzs r-1udh08x r-3s2u2q r-bcqeeo r-qvutc0 r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-18u37iz r-1wvb978').text
                     tweet_url = urlparse(multi_info.get_attribute("href")).path.split('/')
                 except StaleElementReferenceException:
                     print("謎エラースキップ(self.dt.user_name)")
@@ -268,7 +263,6 @@ class Bot:
                 self.dt.tweet_id = tweet_url[-1]
 
                 try:
-                    # print(f"ユーザid:{self.dt.user_id}")
                     if temp.elements_temp('css-1dbjc4n r-o52ifk'):  # 新しいツイートを読み込めていない
                         print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                         raise Exception
@@ -348,8 +342,8 @@ class Bot:
                 except ElementClickInterceptedException:
                     print("プロフィールダイアログが表示されていいねできないためスキップ")
                     continue
-                Bot.clicked_nice_sum_word = Bot.clicked_nice_sum_word + 1
-                Bot.clicked_nice_sum = Bot.clicked_nice_sum + 1
+                Bot.clicked_nice_sum_word += 1
+                Bot.clicked_nice_sum += 1
                 time.sleep(random.uniform(3, 6))
                 # 削除された場合のクラス名　'css-901oao css-16my406 r-1tl8opc r-bcqeeo r-qvutc0'
                 # TODO ここでBOTチェックが入った　エラー　selenium.common.exceptions.StaleElementReferenceException
@@ -366,6 +360,7 @@ class Bot:
                 print('いいね数オーバー', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                 Bot.clicked_nice_sum_word = 0
                 return True
+        return False
 
 
 if __name__ == '__main__':
