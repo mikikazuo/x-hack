@@ -86,7 +86,7 @@ class Data:
 
 
 class Bot:
-    special_words = ['有馬記念', 'ウマ娘', '競馬']
+    special_words = ['ウマ娘', '競馬']
     # 検索ワード
     search_words = [*special_words, '騎手', 'イクイノックス', 'リバティアイランド', '単勝', *special_words, '複勝',
                     '馬連', '馬単', '3連単', *special_words, '3連複', '三連単', '三連複', '穴馬', ]
@@ -185,14 +185,13 @@ class Bot:
     def start_scroll(self):
         skip_cnt = -1
         skip_flag = True
-        for scroll_idx in range(50):
+        for scroll_idx in range(30):
             dt_now = datetime.utcnow() + timedelta(hours=9)
-            print(f'取得回数:{scroll_idx}')
             # この時点でBOT検証ページに飛ばされてタイムオーバーエラー
             self.driver_wait(By.TAG_NAME, "article")
             skip_cnt += 1 if skip_flag else 0
             if skip_cnt > 5:
-                print("連続スキップ上限オーバー")
+                print(f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
                 return False
             skip_flag = True
             for article in self.driver.find_elements(By.XPATH, "//article"):
@@ -237,7 +236,7 @@ class Bot:
                     print("謎エラースキップ(text_elements)")
                     continue
                 if not text_elements:  # 本文がなく画像だけのパターンもあるため弾く
-                    print("本文がなくスキップ")
+                    #print("本文がなくスキップ")
                     continue
                 # 本文
                 try:
@@ -355,9 +354,10 @@ class Bot:
                 skip_flag = False
 
             time.sleep(random.uniform(1, 3))
-            print(f"いいね総数：{Bot.clicked_nice_sum}")
             if Bot.clicked_nice_sum_word > Bot.nice_max:
+                print(f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
                 print('いいね数オーバー', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                print('=============================================')
                 Bot.clicked_nice_sum_word = 0
                 return True
         return False
@@ -366,7 +366,7 @@ class Bot:
 if __name__ == '__main__':
     bot = Bot()
     for search_word in Bot.search_words:
-        print(f"検索ワード：{search_word}")
+        print(f"---検索ワード：{search_word}---")
         bot.driver.get(f"https://twitter.com/search?q={search_word}&src=typed_query&f=live")
         if bot.start_scroll():  # 連続スキップ(False)の場合、次の検索ワードに即移行する
             time.sleep(60 * 15)
