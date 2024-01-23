@@ -88,7 +88,7 @@ class Data:
 class Bot:
     special_words = ['ウマ娘', '競馬']
     # 検索ワード
-    search_words = [*special_words, '騎手', 'イクイノックス', 'リバティアイランド', '単勝', *special_words, '複勝',
+    search_words = [*special_words, '騎手', 'イクイノックス',  '単勝', *special_words, '複勝',
                     '馬連', '馬単', '3連単', *special_words, '3連複', '三連単', '三連複', '穴馬', ]
     # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
     follow_mode = False
