@@ -86,9 +86,9 @@ class Data:
 
 
 class Bot:
-    special_words = ['ウマ娘', '競馬']
+    special_words = ['パチンコ', '競艇', '競輪', 'ボートレース', '競馬', 'オークス']
     # 検索ワード
-    search_words = [*special_words, '騎手', 'イクイノックス',  '単勝', *special_words, '複勝',
+    search_words = [*special_words, '騎手', 'イクイノックス', '単勝', *special_words, '複勝',
                     '馬連', '馬単', '3連単', *special_words, '3連複', '三連単', '三連複', '穴馬', ]
     # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
     follow_mode = False
@@ -97,7 +97,7 @@ class Bot:
     user_follower_ratio = 3
 
     # いいね最大数
-    nice_max = 40
+    nice_max = 30
     # 累計のいいね回数
     clicked_nice_sum = 0
     # １単語ごとのいいね回数
@@ -191,7 +191,8 @@ class Bot:
             self.driver_wait(By.TAG_NAME, "article")
             skip_cnt += 1 if skip_flag else 0
             if skip_cnt > 5:
-                print(f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
+                print(
+                    f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
                 return False
             skip_flag = True
             for article in self.driver.find_elements(By.XPATH, "//article"):
@@ -217,14 +218,13 @@ class Bot:
                     # print("いいね済みスキップ")
                     continue
                 try:
-                    # 広告を弾くのに利用(広告は投稿時間の記載がない) ＆ その他、ツイートid・ツイート時間情報が入っている
-                    multi_info = temp.elements_temp(
-                        'css-1rynq56 r-bcqeeo r-qvutc0 r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21',
-                        'class', 'a')
+                    # 広告を弾くのに利用(広告は投稿時間の記載がない) ＆ その他、ツイートid・ツイート時間情報が入っている (クラス名が定期的に変わっている)
+                    multi_info = temp.elements_temp('css-146c3p1 r-bcqeeo r-1ttztb7 r-qvutc0 r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21', 'class', 'a')
                 except StaleElementReferenceException:
                     print("謎エラースキップ(multi_info)")
                     continue
                 if not multi_info:
+                    print("情報参照エラー")
                     continue
                 multi_info = multi_info[0]
 
@@ -236,7 +236,7 @@ class Bot:
                     print("謎エラースキップ(text_elements)")
                     continue
                 if not text_elements:  # 本文がなく画像だけのパターンもあるため弾く
-                    #print("本文がなくスキップ")
+                    # print("本文がなくスキップ")
                     continue
                 # 本文
                 try:
@@ -252,8 +252,9 @@ class Bot:
                 self.dt.text_hashtag_num = self.dt.text.count('#')
 
                 try:
-                    self.dt.user_name = temp.element_temp(
-                        'css-1rynq56 r-dnmrzs r-1udh08x r-3s2u2q r-bcqeeo r-qvutc0 r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-18u37iz r-1wvb978').text
+                    # 使わないためコメントアウト（クラス名が定期的に変わっている）
+                    # self.dt.user_name = temp.element_temp(
+                    #     'css-1rynq56 r-dnmrzs r-1udh08x r-3s2u2q r-bcqeeo r-qvutc0 r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-18u37iz r-1wvb978').text
                     tweet_url = urlparse(multi_info.get_attribute("href")).path.split('/')
                 except StaleElementReferenceException:
                     print("謎エラースキップ(self.dt.user_name)")
@@ -282,15 +283,17 @@ class Bot:
 
                 # 引用のマークも含まれてしまっていたのでnot containsで弾いた
                 # 最後のsvgタグで取得できなかったため、rect関数で領域をチェック方式にした
+
+                # 使わないためコメントアウト（クラス名が定期的に変わっている）
                 # 引用領域
-                quote_class_value = 'css-175oi2r r-adacv r-1udh08x r-1kqtdi0 r-1867qdf r-rs99b7 r-o7ynqc r-6416eg r-1ny4l3l r-1loqt21'
-                try:
-                    self.dt.is_blue_user = temp.article.find_element(By.XPATH,
-                                                                     f"div//a[not(contains(@class,'{quote_class_value}'))]//div[@class='css-1rynq56 r-bcqeeo r-qvutc0 r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-18u37iz r-1q142lx']/span").rect[
-                                               'height'] != 0
-                except StaleElementReferenceException:
-                    print("原因不明のたまに起きるエラーが発生")
-                    continue
+                # quote_class_value = 'css-175oi2r r-adacv r-1udh08x r-1kqtdi0 r-1867qdf r-rs99b7 r-o7ynqc r-6416eg r-1ny4l3l r-1loqt21'
+                # try:
+                #     self.dt.is_blue_user = temp.article.find_element(By.XPATH,
+                #                                                      f"div//a[not(contains(@class,'{quote_class_value}'))]//div[@class='css-1rynq56 r-bcqeeo r-qvutc0 r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-18u37iz r-1q142lx']/span").rect[
+                #                                'height'] != 0
+                # except StaleElementReferenceException:
+                #     print("原因不明のたまに起きるエラーが発生")
+                #     continue
 
                 self.dt.is_reply = '返信先' in temp.element_temp(
                     'css-175oi2r r-1iusvr4 r-16y2uox r-1777fci r-kzbkwu').text
@@ -301,7 +304,8 @@ class Bot:
                 self.dt.img_sum = len(temp.elements_temp('画像', 'aria-label'))
                 self.dt.is_twitter_card = len(
                     temp.elements_temp('css-1dbjc4n r-1igl3o0 r-pm2fo r-zmljjp r-rull8r r-qklmqi r-1adg3ll')) > 0
-                self.dt.is_quote = len(temp.elements_temp(quote_class_value)) > 0
+                # 使わないためコメントアウト（クラス名が定期的に変わっている）
+                # self.dt.is_quote = len(temp.elements_temp(quote_class_value)) > 0
 
                 for info in bottom_info_list:
                     info_split = info.split()
@@ -335,9 +339,9 @@ class Bot:
                         (dt_now - datetime.strptime(interval_from_action, '%Y年%m月%d日')).total_seconds())
 
                 # いいねクリック操作
-                self.driver_wait(By.XPATH, "//div[@data-testid='like']")
+                self.driver_wait(By.XPATH, "//button[@data-testid='like']")
                 try:
-                    temp.element_temp('like', 'data-testid').click()
+                    temp.element_temp('like', 'data-testid','button').click()
                 except ElementClickInterceptedException:
                     print("プロフィールダイアログが表示されていいねできないためスキップ")
                     continue
@@ -355,7 +359,8 @@ class Bot:
 
             time.sleep(random.uniform(1, 3))
             if Bot.clicked_nice_sum_word > Bot.nice_max:
-                print(f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
+                print(
+                    f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
                 print('いいね数オーバー', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                 print('=============================================')
                 Bot.clicked_nice_sum_word = 0
