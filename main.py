@@ -86,7 +86,7 @@ class Data:
 
 
 class Bot:
-    special_words = ['パチンコ', '競艇', '競輪', 'ボートレース', '競馬', 'オークス']
+    special_words = ['パチンコ', '競艇', '競輪', 'ボートレース', '競馬', '天皇賞']
     # 検索ワード
     search_words = [*special_words, '騎手', 'イクイノックス', '単勝', *special_words, '複勝',
                     '馬連', '馬単', '3連単', *special_words, '3連複', '三連単', '三連複', '穴馬', ]
@@ -203,11 +203,15 @@ class Bot:
                     # print("スクロール範囲外")
                     continue
                 temp = TempXPath(article)
-
-                if temp.elements_contain_temp(
-                        'css-18t94o4 css-1dbjc4n r-l5o3uw r-42olwf r-sdzlij r-1phboty r-rs99b7 r-2yi16'):  # 新しいツイートを読み込めていない test
-                    print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
-                    raise Exception
+                time.sleep(1)
+                try:
+                    if temp.elements_contain_temp(
+                            'css-18t94o4 css-1dbjc4n r-l5o3uw r-42olwf r-sdzlij r-1phboty r-rs99b7 r-2yi16'):  # 新しいツイートを読み込めていない test
+                        print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                        raise Exception
+                except StaleElementReferenceException:
+                    print('謎エラースキップ(css-18t94o4)')
+                    continue
                 try:
                     # 下部のリアクション数情報、いいね済かどうかの情報も入っている
                     bottom_info_list = temp.element_contain_temp('group', 'role').get_attribute("aria-label").split('、')
@@ -357,6 +361,7 @@ class Bot:
                 self.save_csv()
                 skip_flag = False
 
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(random.uniform(1, 3))
             if Bot.clicked_nice_sum_word > Bot.nice_max:
                 print(
