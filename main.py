@@ -10,7 +10,7 @@ from selenium.common import TimeoutException, ElementClickInterceptedException, 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-
+from selenium_stealth import stealth
 
 # https://twitter.com/account/access　のURLに飛ばされた　BOTチェックで
 # 取得回数:64 検索ワード：競馬　アウト   取得回数:50
@@ -109,6 +109,16 @@ class Bot:
     def __init__(self):
         self.dt: Data | None = None
         self.driver = init_driver()
+
+        stealth(self.driver,
+                languages=["ja-JP", "ja", "en-US", "en"],
+                vendor="Google Inc.",
+                platform="Win32",
+                webgl_vendor="Intel Inc.",
+                renderer="Intel Iris OpenGL Engine",
+                fix_hairline=True,
+                )
+
         # プロフィール表示用の新しいタブを作成する
         # self.driver.execute_script("window.open()")
         try:
@@ -345,7 +355,14 @@ class Bot:
                 # いいねクリック操作
                 self.driver_wait(By.XPATH, "//button[@data-testid='like']")
                 try:
-                    temp.element_temp('like', 'data-testid','button').click()
+                    nice = temp.element_temp('like', 'data-testid','button')
+                    # XPathを使用して孫以降の要素をチェック
+                    # descendant:: を使用することで、直接の子要素だけでなく、すべての子孫要素を検索
+                    if len(nice.find_elements(By.XPATH, f".//descendant::*[contains(@class, 'r-4qtqp9 r-yyyyoo r-dnmrzs r-bnwqim r-lrvibr r-m6rgpd r-1xvli5t r-1hdv0qi')]")) > 0:
+                        nice.click()
+                    else:
+                        print("ブロックされているためスキップ")
+                        continue
                 except ElementClickInterceptedException:
                     print("プロフィールダイアログが表示されていいねできないためスキップ")
                     continue
