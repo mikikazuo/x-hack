@@ -1,12 +1,16 @@
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import pandas as pd
 from pandas.errors import EmptyDataError
 from selenium import webdriver
-from selenium.common import TimeoutException, ElementClickInterceptedException, StaleElementReferenceException
+from selenium.common import (
+    TimeoutException,
+    ElementClickInterceptedException,
+    StaleElementReferenceException,
+)
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,13 +19,27 @@ from selenium_stealth import stealth
 # https://twitter.com/account/access　のURLに飛ばされた　BOTチェックで
 # 取得回数:64 検索ワード：競馬　アウト   取得回数:50
 
+# 設定モード: True = 筋トレ・フィットネス, False = パチンコ・競馬
+is_fitness_mode = True  # True: 筋トレ・フィットネス, False: パチンコ・競馬
+is_eng = True
+
+
 # 取得回数 30ぐらいならセーフか？
 def init_driver():
     # ツイートが動的読込のためヘッドレスモードは不可
     options = webdriver.ChromeOptions()
     # 絶対パス指定
-    login_data_path = r'C:\Users\81809\PycharmProjects\selenium-login\x-hack'
-    options.add_argument('--user-data-dir=' + login_data_path)
+    if is_fitness_mode:
+        login_data_path = (
+            r"C:\Users\boost\Documents\PrivateSourceTree\selenium-login\goutraining-"
+        )
+        login_data_path += r"eng" if is_eng else r"jp"
+    else:
+        # ギャンブルモード
+        login_data_path = (
+            r"C:\Users\boost\Documents\PrivateSourceTree\selenium-login\keiba"
+        )
+    options.add_argument("--user-data-dir=" + login_data_path)
     return webdriver.Chrome(options=options)
 
 
@@ -29,7 +47,7 @@ class TempXPath:
     def __init__(self, article):
         self.article = article
 
-    def element_temp(self, value, attribute='class', tag='div'):
+    def element_temp(self, value, attribute="class", tag="div"):
         """
         [コツ]find_elementを２連結する場合は、２段階目で１つ下の階層のタグ(div//)を挟むことが必要
         :param value: 属性値
@@ -37,16 +55,24 @@ class TempXPath:
         :param tag タグ名
         :return:
         """
-        return self.article.find_element(By.XPATH, f"div//{tag}[@{attribute}='{value}']")
+        return self.article.find_element(
+            By.XPATH, f"div//{tag}[@{attribute}='{value}']"
+        )
 
-    def element_contain_temp(self, value, attribute='class', tag='div'):
-        return self.article.find_element(By.XPATH, f"div//{tag}[contains(@{attribute},'{value}')]")
+    def element_contain_temp(self, value, attribute="class", tag="div"):
+        return self.article.find_element(
+            By.XPATH, f"div//{tag}[contains(@{attribute},'{value}')]"
+        )
 
-    def elements_temp(self, value, attribute='class', tag='div'):
-        return self.article.find_elements(By.XPATH, f"div//{tag}[@{attribute}='{value}']")
+    def elements_temp(self, value, attribute="class", tag="div"):
+        return self.article.find_elements(
+            By.XPATH, f"div//{tag}[@{attribute}='{value}']"
+        )
 
-    def elements_contain_temp(self, value, attribute='class', tag='div'):
-        return self.article.find_elements(By.XPATH, f"div//{tag}[contains(@{attribute},'{value}')]")
+    def elements_contain_temp(self, value, attribute="class", tag="div"):
+        return self.article.find_elements(
+            By.XPATH, f"div//{tag}[contains(@{attribute},'{value}')]"
+        )
 
 
 class Data:
@@ -86,43 +112,96 @@ class Data:
 
 
 class Bot:
-    special_words = ['パチンコ', '競艇', '競輪', 'ボートレース', '競馬', '天皇賞']
-    # 検索ワード
-    search_words = [*special_words, '騎手', 'イクイノックス', '単勝', *special_words, '複勝',
-                    '馬連', '馬単', '3連単', *special_words, '3連複', '三連単', '三連複', '穴馬', ]
-    # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
-    follow_mode = False
-
-    # 許容フォロワー最大比率
-    user_follower_ratio = 3
-
-    # いいね最大数
-    nice_max = 30
-    # 累計のいいね回数
-    clicked_nice_sum = 0
-    # １単語ごとのいいね回数
-    clicked_nice_sum_word = 0
-
-    # csvファイル名
-    csv_name = 'user_2.csv'
-
     def __init__(self):
+        # モードに基づいて設定を初期化
+        if is_fitness_mode:
+            # 筋トレ・フィットネスモード
+            if is_eng:
+                self.special_words = ["workout", "fitness", "exercise"]
+                self.search_words = [*self.special_words, *self.special_words]
+            else:
+                self.special_words = [
+                    "筋トレ",
+                    "トレーニング",
+                    "ダイエット",
+                    "自分磨き",
+                ]
+                # 検索ワード
+                self.search_words = [
+                    *self.special_words,
+                    "ワークアウト",
+                    "自重トレ",
+                    "宅トレ",
+                    *self.special_words,
+                    "家トレ",
+                    "フィットネス",
+                    "自重トレーニング",
+                    "ボディメイク",
+                    *self.special_words,
+                    "朝トレ",
+                ]
+            self.csv_name = "user.csv"
+        else:
+            # パチンコ・競馬モード（is_engの区別は不要）
+            self.special_words = [
+                "パチンコ",
+                "競艇",
+                "競輪",
+                "ボートレース",
+                "競馬",
+                "ローズＳ",
+            ]
+            # 検索ワード
+            self.search_words = [
+                *self.special_words,
+                "騎手",
+                "イクイノックス",
+                "単勝",
+                *self.special_words,
+                "複勝",
+                "馬連",
+                "馬単",
+                "3連単",
+                *self.special_words,
+                "3連複",
+                "三連単",
+                "三連複",
+                "穴馬",
+            ]
+            self.csv_name = "user_2.csv"
+
+        # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
+        self.follow_mode = False
+
+        # 許容フォロワー最大比率
+        self.user_follower_ratio = 3
+
+        # いいね最大数
+        self.nice_max = 30
+        # 累計のいいね回数
+        self.clicked_nice_sum = 0
+        # １単語ごとのいいね回数
+        self.clicked_nice_sum_word = 0
+
         self.dt: Data | None = None
         self.driver = init_driver()
 
-        stealth(self.driver,
-                languages=["ja-JP", "ja", "en-US", "en"],
-                vendor="Google Inc.",
-                platform="Win32",
-                webgl_vendor="Intel Inc.",
-                renderer="Intel Iris OpenGL Engine",
-                fix_hairline=True,
-                )
+        stealth(
+            self.driver,
+            languages=["ja-JP", "ja", "en-US", "en"],
+            vendor="Google Inc.",
+            platform="Win32",
+            webgl_vendor="Intel Inc.",
+            renderer="Intel Iris OpenGL Engine",
+            fix_hairline=True,
+        )
 
         # プロフィール表示用の新しいタブを作成する
         # self.driver.execute_script("window.open()")
         try:
-            self.user_list = pd.read_csv(Bot.csv_name, header=None)[0].to_numpy().tolist()
+            self.user_list = (
+                pd.read_csv(self.csv_name, header=None)[0].to_numpy().tolist()
+            )
         except EmptyDataError:
             self.user_list = []
 
@@ -130,14 +209,18 @@ class Bot:
         """
         要素表示までの待機
         """
-        WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((target, value)))
+        WebDriverWait(self.driver, 20).until(
+            EC.presence_of_element_located((target, value))
+        )
 
     def save_csv(self):
         """
         ユーザ名リスト追加 & csv保存
         """
         self.user_list.append(self.dt.user_id)
-        pd.Series([self.dt.user_id]).to_csv(Bot.csv_name, mode="a", header=False, index=False)
+        pd.Series([self.dt.user_id]).to_csv(
+            self.csv_name, mode="a", header=False, index=False
+        )
 
     def profile_check(self, dt_now):
         """
@@ -146,69 +229,87 @@ class Bot:
         :return: エラー時にTrue
         """
         # 新しいタブでURLアクセス
-        self.driver.get(f'https://twitter.com/{self.dt.user_id}')
+        self.driver.get(f"https://twitter.com/{self.dt.user_id}")
         try:
             self.driver_wait(By.XPATH, "//span[@data-testid='UserJoinDate']")
         except TimeoutException:  # 再読み込みボタンが表示されている状態
-            print('プロフィールが読み込めないためスキップ')
+            print("プロフィールが読み込めないためスキップ")
             return True
 
-        if self.driver.find_elements(By.XPATH, "//div[@data-testid='userFollowIndicator']"):
-            print('フォロワーのためスキップ')
+        if self.driver.find_elements(
+            By.XPATH, "//div[@data-testid='userFollowIndicator']"
+        ):
+            print("フォロワーのためスキップ")
             self.dt.is_follower = True
             self.save_csv()
             return True
 
         def change_unit(text):
-            """　単位の統一　"""
+            """単位の統一"""
             changed_text = text
-            for word, unit in {'万': 10000, '億': 100000000}.items():
+            for word, unit in {"万": 10000, "億": 100000000}.items():
                 if word in text:
-                    return int(float(changed_text.replace(word, '')) * unit)
-            return int(changed_text.replace(',', ''))
+                    return int(float(changed_text.replace(word, "")) * unit)
+            return int(changed_text.replace(",", ""))
 
-        follow_follower_num = self.driver.find_elements(By.XPATH,
-                                                        "//span[@class='css-901oao css-16my406 r-1nao33i r-1tl8opc r-1b43r93 r-b88u0q r-1cwl3u0 r-bcqeeo r-qvutc0']")
+        follow_follower_num = self.driver.find_elements(
+            By.XPATH,
+            "//span[@class='css-901oao css-16my406 r-1nao33i r-1tl8opc r-1b43r93 r-b88u0q r-1cwl3u0 r-bcqeeo r-qvutc0']",
+        )
         self.dt.user_follow_num = change_unit(follow_follower_num[0].text)
         self.dt.user_follower_num = change_unit(follow_follower_num[1].text)
 
-        if self.dt.user_follow_num == 0 or self.dt.user_follower_num / self.dt.user_follow_num > Bot.user_follower_ratio:
+        if (
+            self.dt.user_follow_num == 0
+            or self.dt.user_follower_num / self.dt.user_follow_num
+            > self.user_follower_ratio
+        ):
             # print('フォロワー比率が高いためスキップ')
             self.save_csv()
             return True
 
         # プロフィール記載がない場合は要素が見つからない
-        user_profile = self.driver.find_elements(By.XPATH, "//div[@data-testid='UserDescription']")
+        user_profile = self.driver.find_elements(
+            By.XPATH, "//div[@data-testid='UserDescription']"
+        )
         if user_profile:
             self.dt.user_profile = user_profile[0].text
-            self.dt.user_profile_length = len(self.dt.user_profile.replace('\n', ''))
+            self.dt.user_profile_length = len(self.dt.user_profile.replace("\n", ""))
         else:
-            self.dt.user_profile = ''
+            self.dt.user_profile = ""
             self.dt.user_profile_length = 0
         user_join = datetime.strptime(
-            self.driver.find_element(By.XPATH, f"//span[@data-testid='UserJoinDate']").text,
-            '%Y年%m月からTwitterを利用しています')
+            self.driver.find_element(
+                By.XPATH, f"//span[@data-testid='UserJoinDate']"
+            ).text,
+            "%Y年%m月からTwitterを利用しています",
+        )
         # 月数差分
-        self.dt.interval_from_user_join = (dt_now.year - user_join.year) * 12 + dt_now.month - user_join.month
+        self.dt.interval_from_user_join = (
+            (dt_now.year - user_join.year) * 12 + dt_now.month - user_join.month
+        )
         return False
 
     def start_scroll(self):
         skip_cnt = -1
         skip_flag = True
         for scroll_idx in range(30):
-            dt_now = datetime.utcnow() + timedelta(hours=9)
+            dt_now = datetime.now(timezone(timedelta(hours=9)))
             # この時点でBOT検証ページに飛ばされてタイムオーバーエラー
             self.driver_wait(By.TAG_NAME, "article")
             skip_cnt += 1 if skip_flag else 0
             if skip_cnt > 5:
                 print(
-                    f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
+                    f"取得回数:{scroll_idx},単語毎のいいね：{self.clicked_nice_sum_word},いいね総数：{self.clicked_nice_sum}"
+                )
                 return False
             skip_flag = True
             for article in self.driver.find_elements(By.XPATH, "//article"):
                 try:
-                    self.driver.execute_script('arguments[0].scrollIntoView({behavior: "smooth", block: "center"});',
-                                               article)
+                    self.driver.execute_script(
+                        'arguments[0].scrollIntoView({behavior: "smooth", block: "center"});',
+                        article,
+                    )
                 except:  # 広告が大きすぎるなど
                     # print("スクロール範囲外")
                     continue
@@ -216,24 +317,37 @@ class Bot:
                 time.sleep(1)
                 try:
                     if temp.elements_contain_temp(
-                            'css-18t94o4 css-1dbjc4n r-l5o3uw r-42olwf r-sdzlij r-1phboty r-rs99b7 r-2yi16'):  # 新しいツイートを読み込めていない test
-                        print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                        "css-18t94o4 css-1dbjc4n r-l5o3uw r-42olwf r-sdzlij r-1phboty r-rs99b7 r-2yi16"
+                    ):  # 新しいツイートを読み込めていない test
+                        print(
+                            "API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}'
+                        )
                         raise Exception
                 except StaleElementReferenceException:
-                    print('謎エラースキップ(css-18t94o4)')
+                    print("謎エラースキップ(css-18t94o4)")
                     continue
                 try:
                     # 下部のリアクション数情報、いいね済かどうかの情報も入っている
-                    bottom_info_list = temp.element_contain_temp('group', 'role').get_attribute("aria-label").split('、')
+                    bottom_info_list = (
+                        temp.element_contain_temp("group", "role")
+                        .get_attribute("aria-label")
+                        .split("、")
+                    )
                 except:
                     print("謎エラースキップ(bottom_info_list)")
                     continue
-                if 'いいね済み' in bottom_info_list:
+                if "いいね済み" in bottom_info_list:
                     # print("いいね済みスキップ")
                     continue
                 try:
                     # 広告を弾くのに利用(広告は投稿時間の記載がない) ＆ その他、ツイートid・ツイート時間情報が入っている (クラス名が定期的に変わっている)
-                    multi_info = temp.elements_temp('css-146c3p1 r-bcqeeo r-1ttztb7 r-qvutc0 r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21', 'class', 'a')
+                    multi_temp = "css-146c3p1 r-bcqeeo r-1ttztb7 r-qvutc0 "
+                    multi_temp += (
+                        "r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21"
+                        if is_eng
+                        else "r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21"
+                    )
+                    multi_info = temp.elements_temp(multi_temp, "class", "a")
                 except StaleElementReferenceException:
                     print("謎エラースキップ(multi_info)")
                     continue
@@ -245,7 +359,7 @@ class Bot:
                 self.dt = Data()
 
                 try:
-                    text_elements = temp.elements_temp('tweetText', 'data-testid')
+                    text_elements = temp.elements_temp("tweetText", "data-testid")
                 except StaleElementReferenceException:
                     print("謎エラースキップ(text_elements)")
                     continue
@@ -258,18 +372,22 @@ class Bot:
                 except StaleElementReferenceException:
                     print("謎エラースキップ(self.dt.text)")
                     continue
-                if search_word not in self.dt.text:  # ユーザ名だけに引っかかるパターンは弾く
+                if (
+                    search_word not in self.dt.text
+                ):  # ユーザ名だけに引っかかるパターンは弾く
                     # print('ユーザ名のみに引っかかったためスキップ')
                     continue
-                self.dt.text_length = len(self.dt.text.replace('\n', ''))
+                self.dt.text_length = len(self.dt.text.replace("\n", ""))
                 # 本文中のハッシュタグの個数
-                self.dt.text_hashtag_num = self.dt.text.count('#')
+                self.dt.text_hashtag_num = self.dt.text.count("#")
 
                 try:
                     # 使わないためコメントアウト（クラス名が定期的に変わっている）
                     # self.dt.user_name = temp.element_temp(
                     #     'css-1rynq56 r-dnmrzs r-1udh08x r-3s2u2q r-bcqeeo r-qvutc0 r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-18u37iz r-1wvb978').text
-                    tweet_url = urlparse(multi_info.get_attribute("href")).path.split('/')
+                    tweet_url = urlparse(multi_info.get_attribute("href")).path.split(
+                        "/"
+                    )
                 except StaleElementReferenceException:
                     print("謎エラースキップ(self.dt.user_name)")
                     continue
@@ -277,13 +395,19 @@ class Bot:
                 self.dt.tweet_id = tweet_url[-1]
 
                 try:
-                    if temp.elements_temp('css-1dbjc4n r-o52ifk'):  # 新しいツイートを読み込めていない
-                        print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                    if temp.elements_temp(
+                        "css-1dbjc4n r-o52ifk"
+                    ):  # 新しいツイートを読み込めていない
+                        print(
+                            "API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}'
+                        )
                         raise Exception
                 except StaleElementReferenceException:
                     print("謎エラースキップ(temp.elements_temp)")
                     continue
-                if self.dt.user_id in self.user_list:  # いいねしたことのあるユーザを弾く
+                if (
+                    self.dt.user_id in self.user_list
+                ):  # いいねしたことのあるユーザを弾く
                     # print("いいね済みユーザのためスキップ")
                     continue
 
@@ -308,92 +432,122 @@ class Bot:
                 # except StaleElementReferenceException:
                 #     print("原因不明のたまに起きるエラーが発生")
                 #     continue
-
-                self.dt.is_reply = '返信先' in temp.element_temp(
-                    'css-175oi2r r-1iusvr4 r-16y2uox r-1777fci r-kzbkwu').text
+                temp_text = temp.element_temp(
+                    "css-175oi2r r-1iusvr4 r-16y2uox r-1777fci r-kzbkwu"
+                ).text
+                self.dt.is_reply = "返信先" in temp_text or "Replying" in temp_text
                 if self.dt.is_reply:  # 返信ツイートを弾く
                     # print("返信ツイートのためスキップ")
                     continue
 
-                self.dt.img_sum = len(temp.elements_temp('画像', 'aria-label'))
-                self.dt.is_twitter_card = len(
-                    temp.elements_temp('css-1dbjc4n r-1igl3o0 r-pm2fo r-zmljjp r-rull8r r-qklmqi r-1adg3ll')) > 0
+                self.dt.img_sum = len(temp.elements_temp("画像", "aria-label"))
+                self.dt.is_twitter_card = (
+                    len(
+                        temp.elements_temp(
+                            "css-1dbjc4n r-1igl3o0 r-pm2fo r-zmljjp r-rull8r r-qklmqi r-1adg3ll"
+                        )
+                    )
+                    > 0
+                )
                 # 使わないためコメントアウト（クラス名が定期的に変わっている）
                 # self.dt.is_quote = len(temp.elements_temp(quote_class_value)) > 0
 
                 for info in bottom_info_list:
                     info_split = info.split()
-                    if '件の返信' in info_split:
+                    if "件の返信" in info_split:
                         self.dt.reply_sum = int(info_split[0])
-                    elif '件のリツイート' in info_split:
+                    elif "件のリツイート" in info_split:
                         self.dt.retweet_sum = int(info_split[0])
-                    elif '件のいいね' in info_split:
+                    elif "件のいいね" in info_split:
                         self.dt.nice_sum = int(info_split[0])
-                    elif '件の表示' in info_split:
+                    elif "件の表示" in info_split:
                         self.dt.impression_sum = int(info_split[0])
 
                 # ツイート時間といいねした時間の秒差分取得
-                interval_from_action = multi_info.get_attribute("aria-label")
-                is_below_hour = False
-                if '現在' in interval_from_action:
-                    self.dt.interval_from_action = 0
-                    is_below_hour = True
-                else:
-                    # 差分が時間単位以下の場合
-                    for word, unit in {'秒': 1, '分': 60, '時間': 3600}.items():
-                        if word in interval_from_action:
-                            self.dt.interval_from_action = int(interval_from_action.split()[0]) * unit
-                            is_below_hour = True
-                            break
-                # 差分が日数単位の場合
-                if not is_below_hour:
-                    if '年' not in interval_from_action:
-                        interval_from_action = f'{dt_now.year}年{interval_from_action}'
-                    self.dt.interval_from_action = int(
-                        (dt_now - datetime.strptime(interval_from_action, '%Y年%m月%d日')).total_seconds())
+                # 英語対応が必要なためコメントアウト
+                # interval_from_action = multi_info.get_attribute("aria-label")
+                # is_below_hour = False
+                # if '現在' in interval_from_action:
+                #     self.dt.interval_from_action = 0
+                #     is_below_hour = True
+                # else:
+                #     # 差分が時間単位以下の場合
+                #     for word, unit in {'秒': 1, '分': 60, '時間': 3600}.items():
+                #         if word in interval_from_action:
+                #             self.dt.interval_from_action = int(interval_from_action.split()[0]) * unit
+                #             is_below_hour = True
+                #             break
+                # # 差分が日数単位の場合
+                # if not is_below_hour:
+                #     print(interval_from_action)
+                #     if '年' not in interval_from_action:
+                #         interval_from_action = f'{dt_now.year}年{interval_from_action}'
+                #     self.dt.interval_from_action = int(
+                #         (dt_now - datetime.strptime(interval_from_action, '%Y年%m月%d日')).total_seconds())
 
                 # いいねクリック操作
                 self.driver_wait(By.XPATH, "//button[@data-testid='like']")
                 try:
-                    nice = temp.element_temp('like', 'data-testid','button')
+                    nice = temp.element_temp("like", "data-testid", "button")
                     # XPathを使用して孫以降の要素をチェック
                     # descendant:: を使用することで、直接の子要素だけでなく、すべての子孫要素を検索
-                    if len(nice.find_elements(By.XPATH, f".//descendant::*[contains(@class, 'r-4qtqp9 r-yyyyoo r-dnmrzs r-bnwqim r-lrvibr r-m6rgpd r-1xvli5t r-1hdv0qi')]")) > 0:
+                    if (
+                        len(
+                            nice.find_elements(
+                                By.XPATH,
+                                f".//descendant::*[contains(@class, 'r-4qtqp9 r-yyyyoo r-dnmrzs r-bnwqim r-lrvibr r-m6rgpd r-1xvli5t r-1hdv0qi')]",
+                            )
+                        )
+                        > 0
+                    ):
                         nice.click()
                     else:
                         print("ブロックされているためスキップ")
                         continue
                 except ElementClickInterceptedException:
-                    print("プロフィールダイアログが表示されていいねできないためスキップ")
+                    print(
+                        "プロフィールダイアログが表示されていいねできないためスキップ"
+                    )
                     continue
-                Bot.clicked_nice_sum_word += 1
-                Bot.clicked_nice_sum += 1
-                time.sleep(random.uniform(3, 6))
+                self.clicked_nice_sum_word += 1
+                self.clicked_nice_sum += 1
+                time.sleep(random.uniform(2, 5))
                 # 削除された場合のクラス名　'css-901oao css-16my406 r-1tl8opc r-bcqeeo r-qvutc0'
                 # TODO ここでBOTチェックが入った　エラー　selenium.common.exceptions.StaleElementReferenceException
-                if temp.elements_temp('like', 'data-testid'):
+                if temp.elements_temp("like", "data-testid"):
+                    print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                    raise Exception
+                # BOT判定された場合、いいね強制解除と警告トーストが表示される
+                if self.driver.find_elements(By.XPATH, f"//div[@data-testid='toast']"):
                     print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                     raise Exception
 
                 self.save_csv()
                 skip_flag = False
 
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            self.driver.execute_script(
+                "window.scrollTo(0, document.body.scrollHeight);"
+            )
             time.sleep(random.uniform(1, 3))
-            if Bot.clicked_nice_sum_word > Bot.nice_max:
+            if self.clicked_nice_sum_word > self.nice_max:
                 print(
-                    f'取得回数:{scroll_idx},単語毎のいいね：{Bot.clicked_nice_sum_word},いいね総数：{Bot.clicked_nice_sum}')
-                print('いいね数オーバー', f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
-                print('=============================================')
-                Bot.clicked_nice_sum_word = 0
+                    f"取得回数:{scroll_idx},単語毎のいいね：{self.clicked_nice_sum_word},いいね総数：{self.clicked_nice_sum}"
+                )
+                print(
+                    "いいね数オーバー", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}'
+                )
+                print("=============================================")
+                self.clicked_nice_sum_word = 0
                 return True
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     bot = Bot()
-    for search_word in Bot.search_words:
+    for search_word in bot.search_words:
         print(f"---検索ワード：{search_word}---")
-        bot.driver.get(f"https://twitter.com/search?q={search_word}&src=typed_query&f=live")
+        bot.driver.get(
+            f"https://twitter.com/search?q={search_word}&src=typed_query&f=live"
+        )
         if bot.start_scroll():  # 連続スキップ(False)の場合、次の検索ワードに即移行する
             time.sleep(60 * 15)
