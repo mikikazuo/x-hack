@@ -1,6 +1,7 @@
 import random
 import time
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -19,9 +20,15 @@ from selenium_stealth import stealth
 # https://twitter.com/account/access　のURLに飛ばされた　BOTチェックで
 # 取得回数:64 検索ワード：競馬　アウト   取得回数:50
 
-# 設定モード: True = 筋トレ・フィットネス, False = パチンコ・競馬
-is_fitness_mode = True  # True: 筋トレ・フィットネス, False: パチンコ・競馬
-is_eng = True
+
+class BotMode(Enum):
+    KEIBA = "keiba"  # 競馬
+    FITNESS_JP = "fitness_jp"  # フィットネス（日本語版）
+    FITNESS_EN = "fitness_en"  # フィットネス（英語版）
+
+
+# 設定モード
+mode = BotMode.KEIBA
 
 
 # 取得回数 30ぐらいならセーフか？
@@ -29,15 +36,17 @@ def init_driver():
     # ツイートが動的読込のためヘッドレスモードは不可
     options = webdriver.ChromeOptions()
     # 絶対パス指定
-    if is_fitness_mode:
-        login_data_path = (
-            r"C:\Users\boost\Documents\PrivateSourceTree\selenium-login\goutraining-"
-        )
-        login_data_path += r"eng" if is_eng else r"jp"
-    else:
-        # ギャンブルモード
+    if mode == BotMode.KEIBA:
         login_data_path = (
             r"C:\Users\boost\Documents\PrivateSourceTree\selenium-login\keiba"
+        )
+    elif mode == BotMode.FITNESS_JP:
+        login_data_path = (
+            r"C:\Users\boost\Documents\PrivateSourceTree\selenium-login\goutraining-jp"
+        )
+    elif mode == BotMode.FITNESS_EN:
+        login_data_path = (
+            r"C:\Users\boost\Documents\PrivateSourceTree\selenium-login\goutraining-eng"
         )
     options.add_argument("--user-data-dir=" + login_data_path)
     return webdriver.Chrome(options=options)
@@ -114,42 +123,44 @@ class Data:
 class Bot:
     def __init__(self):
         # モードに基づいて設定を初期化
-        if is_fitness_mode:
-            # 筋トレ・フィットネスモード
-            if is_eng:
-                self.special_words = ["workout", "fitness", "exercise"]
-                self.search_words = [*self.special_words, *self.special_words]
-            else:
-                self.special_words = [
-                    "筋トレ",
-                    "トレーニング",
-                    "ダイエット",
-                    "自分磨き",
-                ]
-                # 検索ワード
-                self.search_words = [
-                    *self.special_words,
-                    "ワークアウト",
-                    "自重トレ",
-                    "宅トレ",
-                    *self.special_words,
-                    "家トレ",
-                    "フィットネス",
-                    "自重トレーニング",
-                    "ボディメイク",
-                    *self.special_words,
-                    "朝トレ",
-                ]
+        if mode == BotMode.FITNESS_JP:
+            # フィットネス（日本語版）
+            self.special_words = [
+                "ダンベル何キロ持てる",
+                "アニメ",
+                "筋トレ",
+                "トレーニング",
+                "ダイエット",
+            ]
+            # 検索ワード
+            self.search_words = [
+                *self.special_words,
+                "宅トレ",
+                "ワークアウト",
+                "自重トレ",
+                *self.special_words,
+                "家トレ",
+                "フィットネス",
+                "自重トレーニング",
+                "ボディメイク",
+                *self.special_words,
+                "朝トレ",
+            ]
             self.csv_name = "user.csv"
-        else:
-            # パチンコ・競馬モード（is_engの区別は不要）
+        elif mode == BotMode.FITNESS_EN:
+            # フィットネス（英語版）
+            self.special_words = ["anime", "workout", "fitness", "exercise", "diet", "training"]
+            self.search_words = [*self.special_words, *self.special_words]
+            self.csv_name = "user.csv"
+        elif mode == BotMode.KEIBA:
+            # 競馬モード
             self.special_words = [
                 "パチンコ",
                 "競艇",
                 "競輪",
                 "ボートレース",
                 "競馬",
-                "ローズＳ",
+                "アルゼンチン共和国杯",
             ]
             # 検索ワード
             self.search_words = [
@@ -344,7 +355,7 @@ class Bot:
                     multi_temp = "css-146c3p1 r-bcqeeo r-1ttztb7 r-qvutc0 "
                     multi_temp += (
                         "r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21"
-                        if is_eng
+                        if mode == BotMode.FITNESS_EN
                         else "r-1tl8opc r-a023e6 r-rjixqe r-16dba41 r-xoduu5 r-1q142lx r-1w6e6rj r-9aw3ui r-3s2u2q r-1loqt21"
                     )
                     multi_info = temp.elements_temp(multi_temp, "class", "a")
