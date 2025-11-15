@@ -518,9 +518,15 @@ class Bot:
                     print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                     raise Exception
                 # BOT判定された場合、いいね強制解除と警告トーストが表示される
-                if self.driver.find_elements(By.XPATH, f"//div[@data-testid='toast']"):
-                    print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
-                    raise Exception
+                toast_elements = self.driver.find_elements(By.XPATH, f"//div[@data-testid='toast']")
+                if toast_elements:
+                    toast_text = toast_elements[0].text
+                    if "削除されました" in toast_text or "deleted" in toast_text.lower():
+                        print("ポストが削除されているためスキップ")
+                        continue
+                    else:
+                        print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                        raise Exception
 
                 self.save_csv()
                 skip_flag = False
