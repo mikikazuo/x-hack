@@ -11,6 +11,7 @@ from selenium.common import (
     TimeoutException,
     ElementClickInterceptedException,
     StaleElementReferenceException,
+    ElementNotInteractableException,
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -126,7 +127,6 @@ class Bot:
         if mode == BotMode.FITNESS_JP:
             # フィットネス（日本語版）
             self.special_words = [
-                "ダンベル何キロ持てる",
                 "アニメ",
                 "筋トレ",
                 "トレーニング",
@@ -135,6 +135,7 @@ class Bot:
             # 検索ワード
             self.search_words = [
                 *self.special_words,
+                "ダンベル何キロ持てる",
                 "宅トレ",
                 "ワークアウト",
                 "自重トレ",
@@ -143,14 +144,25 @@ class Bot:
                 "フィットネス",
                 "自重トレーニング",
                 "ボディメイク",
-                *self.special_words,
                 "朝トレ",
+                "ダンベル",
+                *self.special_words,
             ]
             self.csv_name = "user.csv"
         elif mode == BotMode.FITNESS_EN:
             # フィットネス（英語版）
-            self.special_words = ["anime", "workout", "fitness", "exercise", "diet", "training"]
-            self.search_words = [*self.special_words, *self.special_words]
+            self.special_words = [
+                "anime",
+                "workout",
+                "fitness",
+                "exercise",
+                "diet",
+                "training",
+                "muscle",
+                "health",
+                "dumbbell"
+            ]
+            self.search_words = [*self.special_words, *self.special_words, *self.special_words, *self.special_words]
             self.csv_name = "user.csv"
         elif mode == BotMode.KEIBA:
             # 競馬モード
@@ -160,7 +172,7 @@ class Bot:
                 "競輪",
                 "ボートレース",
                 "競馬",
-                "アルゼンチン共和国杯",
+                "東スポ杯",
             ]
             # 検索ワード
             self.search_words = [
@@ -498,27 +510,46 @@ class Bot:
 
                 # いいねクリック操作
                 self.driver_wait(By.XPATH, "//button[@data-testid='like']")
+                self.driver_wait(By.XPATH, "//button[@data-testid='like']")
                 try:
                     nice = temp.element_temp("like", "data-testid", "button")
                     # XPathを使用して孫以降の要素をチェック
-                    # descendant:: を使用することで、直接の子要素だけでなく、すべての子孫要素を検索
                     if (
-                        len(
-                            nice.find_elements(
-                                By.XPATH,
-                                f".//descendant::*[contains(@class, 'r-4qtqp9 r-yyyyoo r-dnmrzs r-bnwqim r-lrvibr r-m6rgpd r-1xvli5t r-1hdv0qi')]",
+                            len(
+                                nice.find_elements(
+                                    By.XPATH,
+                                    f".//descendant::*[contains(@class, 'r-4qtqp9 r-yyyyoo r-dnmrzs r-bnwqim r-lrvibr r-m6rgpd r-1xvli5t r-1hdv0qi')]",
+                                )
                             )
-                        )
-                        > 0
+                            > 0
                     ):
                         nice.click()
                     else:
                         print("ブロックされているためスキップ")
                         continue
+                except ElementNotInteractableException:
+                    # ブロックダイアログが表示された場合、OKボタンを押して閉じる
+                    try:
+                        ok_button = self.driver.find_element(
+                            By.XPATH, "//div[@data-testid='sheetDialog']//button[.//span[text()='OK']]"
+                        )
+                        ok_button.click()
+                        print("ブロックダイアログを閉じました、スキップ")
+                        time.sleep(0.5)
+                    except:
+                        print("ダイアログを閉じられませんでした")
+                    continue
                 except ElementClickInterceptedException:
-                    print(
-                        "プロフィールダイアログが表示されていいねできないためスキップ"
-                    )
+                    # プロフィールダイアログまたはブロックダイアログが表示された場合
+                    try:
+                        ok_button = self.driver.find_element(
+                            By.XPATH, "//div[@data-testid='sheetDialog']//button[.//span[text()='OK']]"
+                        )
+                        ok_button.click()
+                        print("ブロックダイアログを閉じました、スキップ")
+                        time.sleep(0.5)
+                    except:
+                        print("プロフィールダイアログが表示されていいねできないためスキップ")
                     continue
                 self.clicked_nice_sum_word += 1
                 self.clicked_nice_sum += 1
@@ -529,14 +560,21 @@ class Bot:
                     print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
                     raise Exception
                 # BOT判定された場合、いいね強制解除と警告トーストが表示される
-                toast_elements = self.driver.find_elements(By.XPATH, f"//div[@data-testid='toast']")
+                toast_elements = self.driver.find_elements(
+                    By.XPATH, f"//div[@data-testid='toast']"
+                )
                 if toast_elements:
                     toast_text = toast_elements[0].text
-                    if "削除されました" in toast_text or "deleted" in toast_text.lower():
+                    if (
+                        "削除されました" in toast_text
+                        or "deleted" in toast_text.lower()
+                    ):
                         print("ポストが削除されているためスキップ")
                         continue
                     else:
-                        print("API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}')
+                        print(
+                            "API制限中", f'時刻:{dt_now.strftime("%Y/%m/%d %H:%M:%S")}'
+                        )
                         raise Exception
 
                 self.save_csv()
