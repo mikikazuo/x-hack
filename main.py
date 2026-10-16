@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from urllib.parse import urlparse
 import sys
+import concurrent.futures
 
 import pandas as pd
 from pandas.errors import EmptyDataError
@@ -40,21 +41,34 @@ class BotMode(Enum):
         return f"{self.value}.csv"
 
 
-# 設定モード
+# 設定モード（単一実行時に対象とするモード）
 mode = BotMode.ANIPATH
+# 全アカウント一括実行フラグ（True: 全BotModeを実行 / False: modeで指定した単一アカウントを実行）
+run_all = True
+# 並行実行フラグ（True: 複数アカウントを同時に一斉並行起動 / False: 1アカウントずつ順次起動）
+parallel_run = True
+# 特定の複数モードのみを実行したい場合はリストで指定（Noneの場合は run_all の値に従う）
+target_modes: list[BotMode] | None = None
+
+
 # 事前にuse-data-dirを作ること
 # ```bash
 # & "C:/Program Files/Google/Chrome\Application\chrome.exe" --user-data-dir="[user_data_dir]"
 # ```
 # 取得回数 30ぐらいならセーフか？
-def init_driver():
+def init_driver(target_mode: BotMode = mode):
+    """
+    Chrome WebDriverの初期化
+    :param target_mode: 起動対象のBotMode
+    :return: 初期化済みのWebDriverインスタンス
+    """
     # ツイートが動的読込のためヘッドレスモードは不可
     options = webdriver.ChromeOptions()
     # 絶対パス指定
     login_data_path = (
         r"C:\Users\boost\Documents\PrivateSourceTree\selenium-login"
         + "\\"
-        + mode.folder
+        + target_mode.folder
     )
     options.add_argument("--user-data-dir=" + login_data_path)
     # 画像を無効化
@@ -160,9 +174,10 @@ class Data:
 
 
 class Bot:
-    def __init__(self):
+    def __init__(self, bot_mode: BotMode = mode):
+        self.mode = bot_mode
         # モードに基づいて設定を初期化
-        if mode == BotMode.FITNESS_JP:
+        if self.mode == BotMode.FITNESS_JP:
             # フィットネス（日本語版）
             self.special_words = [
                 "アニメ",
@@ -187,7 +202,7 @@ class Bot:
                 "自重トレ",
                 *self.special_words,
             ]
-        elif mode == BotMode.FITNESS_EN:
+        elif self.mode == BotMode.FITNESS_EN:
             # フィットネス（英語版）
             self.special_words = [
                 "anime",
@@ -204,7 +219,7 @@ class Bot:
                 *self.special_words,
                 *self.special_words,
             ]
-        elif mode == BotMode.KEIBA:
+        elif self.mode == BotMode.KEIBA:
             # 競馬モード
             self.special_words = [
                 "競馬",
@@ -231,7 +246,7 @@ class Bot:
                 *self.special_words,
             ]
 
-        elif mode == BotMode.RICE:
+        elif self.mode == BotMode.RICE:
             self.special_words = [
                 "ダイエット",
                 "diet",
@@ -256,7 +271,7 @@ class Bot:
                 "health"
 
             ]
-        elif mode == BotMode.ANIPATH:
+        elif self.mode == BotMode.ANIPATH:
             self.special_words = [
                 "アニメ",
                 "鬼滅",
@@ -270,7 +285,7 @@ class Bot:
                 *self.special_words,
             ]
 
-        self.csv_name = mode.csv_name
+        self.csv_name = self.mode.csv_name
 
         # TODO フォローも合わせて行うかどうか、フォロワー比率を高めたいのでなるべく使わない
         self.follow_mode = False
@@ -284,9 +299,11 @@ class Bot:
         self.clicked_nice_sum = 0
         # １単語ごとのいいね回数
         self.clicked_nice_sum_word = 0
+        # いいね上限到達フラグ
+        self.limit_reached = False
 
         self.dt: Data | None = None
-        self.driver = init_driver()
+        self.driver = init_driver(self.mode)
 
         stealth(
             self.driver,
@@ -392,7 +409,12 @@ class Bot:
         )
         return False
 
-    def start_scroll(self):
+    def start_scroll(self, search_word: str = ""):
+        """
+        ツイート一覧のスクロールといいね処理を実行する
+        :param search_word: 現在の検索ワード
+        :return: 連続スキップされず処理が行われた場合True、早期終了時False
+        """
         skip_cnt = -1
         skip_flag = True
         for scroll_idx in range(30):
@@ -478,7 +500,7 @@ class Bot:
                     print("謎エラースキップ(self.dt.text)")
                     continue
                 if (
-                    search_word not in self.dt.text
+                    search_word and search_word not in self.dt.text
                 ):  # ユーザ名だけに引っかかるパターンは弾く
                     # print('ユーザ名のみに引っかかったためスキップ')
                     continue
@@ -644,13 +666,13 @@ class Bot:
                 self.clicked_nice_sum_word += 1
                 self.clicked_nice_sum += 1
                 time.sleep(random.uniform(2, 5))
-                # 統計値チェック: いいね総数が500を超えたら即終了
+                # 統計値チェック: いいね総数が500を超えたら終了
                 if self.clicked_nice_sum > 500:
                     print(
-                        f"いいね総数が{self.clicked_nice_sum}を超えました。処理を終了します。"
+                        f"いいね総数が{self.clicked_nice_sum}を超えました。該当アカウントの処理を終了します。"
                     )
-                    self.driver.quit()
-                    sys.exit(0)
+                    self.limit_reached = True
+                    return False
                 # 削除された場合のクラス名　'css-901oao css-16my406 r-1tl8opc r-bcqeeo r-qvutc0'
                 # TODO ここでBOTチェックが入った　エラー　selenium.common.exceptions.StaleElementReferenceException
                 if temp.elements_temp("like", "data-testid"):
@@ -694,13 +716,65 @@ class Bot:
         return False
 
 
+def run_bot(bot_mode: BotMode):
+    """
+    指定したBotModeのアカウントでBotを起動し、検索・いいね処理を実行する
+    :param bot_mode: 起動対象のBotMode
+    """
+    print(f"\n=============================================")
+    print(f"BotMode起動: {bot_mode.name} ({bot_mode.value})")
+    print(f"=============================================")
+    bot = None
+    try:
+        bot = Bot(bot_mode)
+        for search_word in bot.search_words:
+            if bot.limit_reached:
+                print(
+                    f"[{bot_mode.name}] いいね上限に達したため、検索ワードループを終了します。"
+                )
+                break
+            print(f"---検索ワード：{search_word}---")
+            bot.driver.get(
+                f"https://twitter.com/search?q={search_word}&src=typed_query&f=live"
+            )
+            if bot.start_scroll(search_word):  # 連続スキップ(False)の場合、次の検索ワードに即移行する
+                time.sleep(60 * 20)  # 15)
+            if bot.limit_reached:
+                print(
+                    f"[{bot_mode.name}] いいね上限に達したため、検索ワードループを終了します。"
+                )
+                break
+    except Exception as e:
+        print(f"[{bot_mode.name}] エラーが発生しました: {e}")
+    finally:
+        if bot and bot.driver:
+            print(f"[{bot_mode.name}] ブラウザを終了します。")
+            try:
+                bot.driver.quit()
+            except Exception as e:
+                print(f"[{bot_mode.name}] ブラウザ終了時にエラー: {e}")
+
+
 if __name__ == "__main__":
-    bot = Bot()
-    for search_word in bot.search_words:
-        print(f"---検索ワード：{search_word}---")
-        bot.driver.get(
-            f"https://twitter.com/search?q={search_word}&src=typed_query&f=live"
-        )
-        if bot.start_scroll():  # 連続スキップ(False)の場合、次の検索ワードに即移行する
-            time.sleep(60 * 20)  # 15)
-    bot.driver.close()
+    # 実行対象モードの決定
+    if target_modes is not None:
+        modes_to_run = target_modes
+    elif run_all:
+        modes_to_run = list(BotMode)
+    else:
+        modes_to_run = [mode]
+
+    print(f"起動予定モード一覧: {[m.name for m in modes_to_run]}")
+
+    # 並行実行または順次実行
+    if parallel_run and len(modes_to_run) > 1:
+        print(f"{len(modes_to_run)}個のアカウントを同時に並行起動します...")
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(modes_to_run)
+        ) as executor:
+            list(executor.map(run_bot, modes_to_run))
+    else:
+        for current_mode in modes_to_run:
+            run_bot(current_mode)
+
+    print("\nすべてのBotModeの処理が完了しました。")
