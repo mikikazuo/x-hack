@@ -6,6 +6,7 @@ from enum import Enum
 from urllib.parse import urlparse
 import sys
 import concurrent.futures
+import threading
 
 import pandas as pd
 from pandas.errors import EmptyDataError
@@ -41,10 +42,38 @@ class BotMode(Enum):
         return f"{self.value}.csv"
 
 
+# ログ出力用: スレッドごとに現在のBotMode名を保持する
+_log_context = threading.local()
+# 並列実行時にログ行が混在しないようにするためのロック
+_log_lock = threading.Lock()
+_builtin_print = print
+
+
+def print(*args, **kwargs):
+    """
+    組み込みprintのラッパー。
+    BotMode実行スレッド内では各行の先頭に [モード名] を付与し、
+    ロックで排他制御することで並列実行時もログが行単位で混ざらないようにする。
+    """
+    name = getattr(_log_context, "name", None)
+    if name is None:
+        _builtin_print(*args, **kwargs)
+        return
+    prefix = f"[{name}] "
+    sep = kwargs.pop("sep", " ")
+    text = sep.join(str(a) for a in args)
+    lines = [
+        line if line.startswith(prefix) else prefix + line
+        for line in text.split("\n")
+    ]
+    with _log_lock:
+        _builtin_print("\n".join(lines), **kwargs)
+
+
 # 設定モード（単一実行時に対象とするモード）
-mode = BotMode.ANIPATH
+mode = BotMode.KEIBA
 # 全アカウント一括実行フラグ（True: 全BotModeを実行 / False: modeで指定した単一アカウントを実行）
-run_all = True
+run_all = False
 # 並行実行フラグ（True: 複数アカウントを同時に一斉並行起動 / False: 1アカウントずつ順次起動）
 parallel_run = True
 # 特定の複数モードのみを実行したい場合はリストで指定（Noneの場合は run_all の値に従う）
@@ -721,7 +750,9 @@ def run_bot(bot_mode: BotMode):
     指定したBotModeのアカウントでBotを起動し、検索・いいね処理を実行する
     :param bot_mode: 起動対象のBotMode
     """
-    print(f"\n=============================================")
+    # このスレッドのログにモード名を付与する
+    _log_context.name = bot_mode.name
+    print(f"=============================================")
     print(f"BotMode起動: {bot_mode.name} ({bot_mode.value})")
     print(f"=============================================")
     bot = None
