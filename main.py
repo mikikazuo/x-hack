@@ -5,8 +5,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from urllib.parse import urlparse
 import sys
-import concurrent.futures
-import threading
+import argparse
 
 import pandas as pd
 from pandas.errors import EmptyDataError
@@ -42,42 +41,8 @@ class BotMode(Enum):
         return f"{self.value}.csv"
 
 
-# ログ出力用: スレッドごとに現在のBotMode名を保持する
-_log_context = threading.local()
-# 並列実行時にログ行が混在しないようにするためのロック
-_log_lock = threading.Lock()
-_builtin_print = print
-
-
-def print(*args, **kwargs):
-    """
-    組み込みprintのラッパー。
-    BotMode実行スレッド内では各行の先頭に [モード名] を付与し、
-    ロックで排他制御することで並列実行時もログが行単位で混ざらないようにする。
-    """
-    name = getattr(_log_context, "name", None)
-    if name is None:
-        _builtin_print(*args, **kwargs)
-        return
-    prefix = f"[{name}] "
-    sep = kwargs.pop("sep", " ")
-    text = sep.join(str(a) for a in args)
-    lines = [
-        line if line.startswith(prefix) else prefix + line
-        for line in text.split("\n")
-    ]
-    with _log_lock:
-        _builtin_print("\n".join(lines), **kwargs)
-
-
-# 設定モード（単一実行時に対象とするモード）
-mode = BotMode.KEIBA
-# 全アカウント一括実行フラグ（True: 全BotModeを実行 / False: modeで指定した単一アカウントを実行）
-run_all = False
-# 並行実行フラグ（True: 複数アカウントを同時に一斉並行起動 / False: 1アカウントずつ順次起動）
-parallel_run = True
-# 特定の複数モードのみを実行したい場合はリストで指定（Noneの場合は run_all の値に従う）
-target_modes: list[BotMode] | None = None
+# デフォルト実行モード（引数未指定時に適用）
+DEFAULT_MODE = BotMode.KEIBA
 
 
 # 事前にuse-data-dirを作ること
@@ -85,7 +50,7 @@ target_modes: list[BotMode] | None = None
 # & "C:/Program Files/Google/Chrome\Application\chrome.exe" --user-data-dir="[user_data_dir]"
 # ```
 # 取得回数 30ぐらいならセーフか？
-def init_driver(target_mode: BotMode = mode):
+def init_driver(target_mode: BotMode = DEFAULT_MODE):
     """
     Chrome WebDriverの初期化
     :param target_mode: 起動対象のBotMode
@@ -203,7 +168,7 @@ class Data:
 
 
 class Bot:
-    def __init__(self, bot_mode: BotMode = mode):
+    def __init__(self, bot_mode: BotMode = DEFAULT_MODE):
         self.mode = bot_mode
         # モードに基づいて設定を初期化
         if self.mode == BotMode.FITNESS_JP:
@@ -750,8 +715,6 @@ def run_bot(bot_mode: BotMode):
     指定したBotModeのアカウントでBotを起動し、検索・いいね処理を実行する
     :param bot_mode: 起動対象のBotMode
     """
-    # このスレッドのログにモード名を付与する
-    _log_context.name = bot_mode.name
     print(f"=============================================")
     print(f"BotMode起動: {bot_mode.name} ({bot_mode.value})")
     print(f"=============================================")
@@ -786,26 +749,43 @@ def run_bot(bot_mode: BotMode):
                 print(f"[{bot_mode.name}] ブラウザ終了時にエラー: {e}")
 
 
+def parse_args() -> argparse.Namespace:
+    """
+    コマンドライン引数を解析する
+    :return: 解析された引数オブジェクト
+    """
+    mode_choices = list(
+        dict.fromkeys([m.value for m in BotMode] + [m.name.lower() for m in BotMode])
+    )
+    parser = argparse.ArgumentParser(
+        description="X(旧Twitter) 自動いいねBot (個別アカウント実行)"
+    )
+    parser.add_argument(
+        "-m",
+        "--mode",
+        type=str,
+        default=DEFAULT_MODE.value,
+        choices=mode_choices,
+        help=f"実行対象のBotModeを指定 (デフォルト: {DEFAULT_MODE.value}, 選択肢: {[m.value for m in BotMode]})",
+    )
+    return parser.parse_args()
+
+
+def get_bot_mode(mode_str: str) -> BotMode:
+    """
+    文字列からBotModeを取得する
+    :param mode_str: 指定されたモード名文字列（valueまたはname）
+    :return: 対応するBotMode
+    """
+    normalized = mode_str.strip().lower()
+    for m in BotMode:
+        if m.value.lower() == normalized or m.name.lower() == normalized:
+            return m
+    raise ValueError(f"無効なBotModeです: {mode_str}")
+
+
 if __name__ == "__main__":
-    # 実行対象モードの決定
-    if target_modes is not None:
-        modes_to_run = target_modes
-    elif run_all:
-        modes_to_run = list(BotMode)
-    else:
-        modes_to_run = [mode]
-
-    print(f"起動予定モード一覧: {[m.name for m in modes_to_run]}")
-
-    # 並行実行または順次実行
-    if parallel_run and len(modes_to_run) > 1:
-        print(f"{len(modes_to_run)}個のアカウントを同時に並行起動します...")
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=len(modes_to_run)
-        ) as executor:
-            list(executor.map(run_bot, modes_to_run))
-    else:
-        for current_mode in modes_to_run:
-            run_bot(current_mode)
-
-    print("\nすべてのBotModeの処理が完了しました。")
+    args = parse_args()
+    target_mode = get_bot_mode(args.mode)
+    run_bot(target_mode)
+    print(f"\n[{target_mode.name}] BotModeの処理が完了しました。")

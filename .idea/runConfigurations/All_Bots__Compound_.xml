@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="All Bots (Compound)" type="CompoundRunConfigurationType">
+    <toRun name="Bot - KEIBA" type="PythonConfigurationType" />
+    <toRun name="Bot - FITNESS_JP" type="PythonConfigurationType" />
+    <toRun name="Bot - FITNESS_EN" type="PythonConfigurationType" />
+    <toRun name="Bot - RICE" type="PythonConfigurationType" />
+    <toRun name="Bot - ANIPATH" type="PythonConfigurationType" />
+    <method v="2" />
+  </configuration>
+</component>
